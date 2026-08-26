@@ -149,6 +149,14 @@ a { text-decoration: none; color: inherit; }
 .badge-green { background: #DFF0D8; color: #2E7D32; }
 .badge-red { background: #F8D7DA; color: #842029; }
 .badge-yellow { background: #FFF3CD; color: #664D03; }
+.badge-gray { background: #E2E3E5; color: #41464B; }
+/* Bölüm 45 — doğrulanmamış (FAZ1 migrasyon) stok satırları görsel olarak ayrışır */
+.unverified-row td { background: #FFF8E1 !important; }
+.unverified-row td:first-child { border-left: 3px solid #B8860B; }
+.count-mode-box { background: var(--gray-50); border: 1px dashed var(--gray-200); border-radius: 8px; padding: 10px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.count-diff-pos { color: #2E7D32; font-weight: 700; }
+.count-diff-neg { color: #c0392b; font-weight: 700; }
+.count-diff-zero { color: var(--gray-600); font-weight: 700; }
 .form-row { margin-bottom: 14px; display: flex; flex-direction: column; gap: 4px; }
 .form-row label { font-size: 0.8rem; font-weight: 600; color: var(--gray-800); }
 .form-row input, .form-row select, .form-row textarea {

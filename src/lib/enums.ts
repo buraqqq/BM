@@ -87,6 +87,18 @@ export const INVENTORY_MOVEMENT_TYPES = [
 ] as const;
 export type InventoryMovementType = (typeof INVENTORY_MOVEMENT_TYPES)[number];
 
+export const INVENTORY_MOVEMENT_TYPE_LABELS: Record<InventoryMovementType, string> = {
+  RESTOCK: "Satın Alma / Stok Girişi",
+  SALE: "Satış",
+  RETURN: "İade",
+  DAMAGE: "Hasar",
+  WASTE: "Fire",
+  COUNT_ADJUSTMENT: "Sayım Düzeltmesi",
+  ADJUSTMENT: "Manuel Düzeltme",
+  MIGRATION: "Sistem Aktarımı (Legacy)",
+  OTHER: "Diğer",
+};
+
 export const CAMPAIGN_DISCOUNT_TYPES = ["PERCENTAGE", "FIXED_AMOUNT"] as const;
 export type CampaignDiscountType = (typeof CAMPAIGN_DISCOUNT_TYPES)[number];
 
