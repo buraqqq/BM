@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/require-admin";
 import { inventoryUpdateSchema } from "@/lib/validation";
 import { writeAuditLog, getClientIp } from "@/lib/audit";
+import { deriveStockStatus } from "@/lib/stock-status";
 
 export const dynamic = "force-dynamic";
 
@@ -33,7 +34,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { productId:
     );
   }
 
-  const stockStatus = resulting === 0 ? "OUT_OF_STOCK" : resulting <= inventory.lowStockThreshold ? "LOW_STOCK" : "IN_STOCK";
+  const stockStatus = deriveStockStatus(resulting, inventory.lowStockThreshold);
 
   const [updatedInventory] = await prisma.$transaction([
     prisma.inventory.update({ where: { productId: params.productId }, data: { quantity: resulting, stockStatus } }),

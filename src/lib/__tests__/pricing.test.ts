@@ -120,4 +120,13 @@ describe("applyBulkAdjustment (Bölüm 16 — toplu fiyat revizyonu)", () => {
   it("sabit indirim negatife düşerse 0'da sınırlanır", () => {
     expect(applyBulkAdjustment(50, "FIXED_DECREASE", 100)).toBe(0);
   });
+  it("belirli fiyata getir (SET_PRICE) doğrudan hedef değeri döner", () => {
+    expect(applyBulkAdjustment(999, "SET_PRICE", 149.9)).toBe(149.9);
+  });
+  it("SET_PRICE negatif bir değer gönderilirse 0'da sınırlanır", () => {
+    expect(applyBulkAdjustment(100, "SET_PRICE", -10)).toBe(0);
+  });
+  it("yüzde/sabit hesaplamalar kuruş hassasiyetinde (2 ondalık) yuvarlanır", () => {
+    expect(applyBulkAdjustment(19.99, "PERCENT_INCREASE", 10)).toBe(21.99);
+  });
 });
