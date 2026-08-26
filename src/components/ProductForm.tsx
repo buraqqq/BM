@@ -26,6 +26,7 @@ interface ProductImage {
   url: string;
   altText: string | null;
   isPrimary: boolean;
+  isMobilePrimary: boolean;
   sortOrder: number;
 }
 interface ProductVariant {
@@ -253,6 +254,50 @@ export function ProductForm({ productId: initialProductId }: Props) {
     loadImages(productId);
   }
 
+  async function setMobilePrimaryImage(imageId: string) {
+    if (!productId) return;
+    await fetch(`/api/admin/products/${productId}/images/${imageId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ isMobilePrimary: true }),
+    });
+    loadImages(productId);
+  }
+
+  async function updateImageAlt(imageId: string, altText: string) {
+    if (!productId) return;
+    await fetch(`/api/admin/products/${productId}/images/${imageId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ altText: altText || null }),
+    });
+    loadImages(productId);
+  }
+
+  // Bölüm 28 — galeri sıralaması: komşu iki görselin sortOrder'ını takas
+  // ederek yukarı/aşağı taşıma. Sunucudan gelen sıralama zaten sortOrder
+  // asc olduğu için (bkz. GET /images), yalnızca komşu çift değişir.
+  async function moveImage(index: number, direction: -1 | 1) {
+    if (!productId) return;
+    const target = index + direction;
+    if (target < 0 || target >= images.length) return;
+    const a = images[index];
+    const b = images[target];
+    await Promise.all([
+      fetch(`/api/admin/products/${productId}/images/${a.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sortOrder: b.sortOrder }),
+      }),
+      fetch(`/api/admin/products/${productId}/images/${b.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sortOrder: a.sortOrder }),
+      }),
+    ]);
+    loadImages(productId);
+  }
+
   async function deleteImage(imageId: string) {
     if (!productId) return;
     await fetch(`/api/admin/products/${productId}/images/${imageId}`, { method: "DELETE" });
@@ -447,16 +492,40 @@ export function ProductForm({ productId: initialProductId }: Props) {
           ) : (
             <>
               <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={(e) => e.target.files?.[0] && uploadImage(e.target.files[0])} />
+              <p style={{ color: "#757575", fontSize: "0.8rem", marginTop: 6 }}>
+                Ana görsel (masaüstü/varsayılan) ve mobil ana görsel ayrı ayrı işaretlenebilir — mobil için ayrı bir
+                görsel yüklemek yerine, galerideki uygun bir görsel "Mobilde ana yap" ile seçilir.
+              </p>
               <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 14 }}>
-                {images.map((img) => (
+                {images.map((img, idx) => (
                   <div key={img.id} className="image-tile">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={img.url} alt={img.altText ?? ""} />
-                    {img.isPrimary && <span className="badge badge-green" style={{ position: "absolute", top: 4, left: 4 }}>Ana</span>}
-                    <div style={{ display: "flex", gap: 4, marginTop: 4 }}>
+                    <div style={{ position: "absolute", top: 4, left: 4, display: "flex", gap: 4 }}>
+                      {img.isPrimary && <span className="badge badge-green">Ana</span>}
+                      {img.isMobilePrimary && <span className="badge badge-yellow">Mobil</span>}
+                    </div>
+                    <input
+                      placeholder="Alt metin (SEO / erişilebilirlik)"
+                      defaultValue={img.altText ?? ""}
+                      onBlur={(e) => updateImageAlt(img.id, e.target.value)}
+                      style={{ width: "100%", marginTop: 6, fontSize: "0.75rem", padding: "4px 6px" }}
+                    />
+                    <div style={{ display: "flex", gap: 4, marginTop: 4, flexWrap: "wrap" }}>
+                      <button type="button" className="admin-btn secondary" disabled={idx === 0} onClick={() => moveImage(idx, -1)} title="Yukarı taşı">
+                        ↑
+                      </button>
+                      <button type="button" className="admin-btn secondary" disabled={idx === images.length - 1} onClick={() => moveImage(idx, 1)} title="Aşağı taşı">
+                        ↓
+                      </button>
                       {!img.isPrimary && (
                         <button type="button" className="admin-btn secondary" onClick={() => setPrimaryImage(img.id)}>
                           Ana yap
+                        </button>
+                      )}
+                      {!img.isMobilePrimary && (
+                        <button type="button" className="admin-btn secondary" onClick={() => setMobilePrimaryImage(img.id)}>
+                          Mobilde ana yap
                         </button>
                       )}
                       <button type="button" className="admin-btn danger" onClick={() => deleteImage(img.id)}>

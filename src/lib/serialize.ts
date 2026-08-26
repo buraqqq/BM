@@ -5,7 +5,7 @@ import { PRODUCT_UNIT_LABELS, type ProductUnit } from "@/lib/enums";
 type ProductWithRelations = Product & {
   category: Category;
   brand?: Brand | null;
-  images?: { url: string; altText: string | null; isPrimary: boolean }[];
+  images?: { url: string; altText: string | null; isPrimary: boolean; isMobilePrimary: boolean }[];
   inventory?: { quantity: number; stockStatus: string } | null;
 };
 
@@ -22,7 +22,7 @@ export function serializePublicProduct(product: ProductWithRelations, activeCamp
     description: product.description,
     unit: product.unit,
     unitLabel: PRODUCT_UNIT_LABELS[product.unit as ProductUnit] ?? product.unit,
-    images: product.images?.map((i) => ({ url: i.url, alt: i.altText, isPrimary: i.isPrimary })) ?? [],
+    images: product.images?.map((i) => ({ url: i.url, alt: i.altText, isPrimary: i.isPrimary, isMobilePrimary: i.isMobilePrimary })) ?? [],
     price: {
       base: breakdown.basePrice,
       final: Math.round(breakdown.finalPrice * 100) / 100,

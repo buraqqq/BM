@@ -9,6 +9,7 @@ export const dynamic = "force-dynamic";
 const patchSchema = z.object({
   altText: z.string().max(200).optional().nullable(),
   isPrimary: z.boolean().optional(),
+  isMobilePrimary: z.boolean().optional(),
   sortOrder: z.number().int().optional(),
 });
 
@@ -27,6 +28,9 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
   if (parsed.data.isPrimary) {
     await prisma.productImage.updateMany({ where: { productId: params.id }, data: { isPrimary: false } });
+  }
+  if (parsed.data.isMobilePrimary) {
+    await prisma.productImage.updateMany({ where: { productId: params.id }, data: { isMobilePrimary: false } });
   }
 
   const updated = await prisma.productImage.update({ where: { id: params.imageId }, data: parsed.data });
