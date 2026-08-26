@@ -38,7 +38,10 @@ const EXPORT_HEADERS = [
  * sütun eşleştirmesi gerekmeden doğrudan tekrar içe aktarılabilir.
  */
 export async function GET(req: NextRequest) {
-  const auth = await requireAdmin();
+  // Bölüm 40 — rol matrisi düzeltmesi: dışa aktarılan CSV "Maliyet Fiyatı"
+  // (kâr marjı hesaplanabilir hassas veri) içeriyor, bu yüzden diğer GET
+  // uçlarının aksine STAFF'a değil yalnızca ADMIN/SUPER_ADMIN'e açık.
+  const auth = await requireAdmin(["ADMIN", "SUPER_ADMIN"]);
   if (!auth.ok) return auth.response;
 
   const { searchParams } = new URL(req.url);

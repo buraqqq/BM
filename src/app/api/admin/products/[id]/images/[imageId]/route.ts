@@ -34,6 +34,27 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   }
 
   const updated = await prisma.productImage.update({ where: { id: params.imageId }, data: parsed.data });
+
+  // Bölüm 28/40 — ana görsel / mobil ana görsel değişimi müşteriye görünen
+  // içeriği doğrudan etkiler, bu yüzden diğer PRODUCT_UPDATE olayları gibi
+  // denetleniyor. Yalnızca sıralama/alt metin gibi kozmetik değişikliklerde
+  // (isPrimary/isMobilePrimary hiç değişmemişse) log gürültüsünü önlemek için
+  // yazılmıyor.
+  if (parsed.data.isPrimary || parsed.data.isMobilePrimary) {
+    await writeAuditLog({
+      adminUserId: auth.session.user.id,
+      action: "PRODUCT_UPDATE",
+      entity: "Product",
+      entityId: params.id,
+      ipAddress: getClientIp(req),
+      metadata: {
+        imageId: params.imageId,
+        isPrimary: parsed.data.isPrimary,
+        isMobilePrimary: parsed.data.isMobilePrimary,
+      },
+    });
+  }
+
   return NextResponse.json(updated);
 }
 
