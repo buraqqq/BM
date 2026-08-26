@@ -6,6 +6,7 @@ import { signOut, useSession } from "next-auth/react";
 const LINKS = [
   { href: "/admin/dashboard", label: "Panel", icon: "fa-gauge-high" },
   { href: "/admin/products", label: "Ürünler", icon: "fa-box" },
+  { href: "/admin/orders", label: "Siparişler", icon: "fa-receipt" },
   { href: "/admin/categories", label: "Kategoriler", icon: "fa-layer-group" },
   { href: "/admin/brands", label: "Markalar", icon: "fa-copyright" },
   { href: "/admin/attributes", label: "Özellikler", icon: "fa-list-check" },
