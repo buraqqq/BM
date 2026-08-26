@@ -7,6 +7,7 @@ import { decimalToNumber } from "@/lib/serialize";
 import { uniqueSlug } from "@/lib/slug";
 import { getCategorySubtreeIds } from "@/lib/category-tree";
 import { checkDuplicates } from "@/lib/duplicate-check";
+import { deriveStockStatus } from "@/lib/stock-status";
 
 export const dynamic = "force-dynamic";
 
@@ -144,6 +145,13 @@ export async function POST(req: NextRequest) {
         create: {
           quantity: data.stock ?? 0,
           ...(data.minimumStock !== undefined ? { lowStockThreshold: data.minimumStock } : {}),
+          // Bölüm 21/42 — E2E senaryosuyla bulundu: Inventory.stockStatus
+          // şemada @default("IN_STOCK") olduğu için, buradan hiç
+          // hesaplanmadan bırakılırsa 0 (hatta düşük) stokla oluşturulan
+          // bir ürün "stokta var" görünüyordu — düşük stok/tükendi
+          // dashboard'unda hiç görünmüyordu. Başlangıç miktarına göre
+          // doğru durumu baştan hesaplıyoruz.
+          stockStatus: deriveStockStatus(data.stock ?? 0, data.minimumStock ?? 5),
         },
       },
       priceHistory: { create: { field: "price", oldValue: null, newValue: data.price, reason: "create", changedById: auth.session.user.id } },

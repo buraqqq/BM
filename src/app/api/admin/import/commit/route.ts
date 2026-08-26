@@ -5,6 +5,7 @@ import { importCommitSchema } from "@/lib/validation";
 import { validateImportRows, summarizeImportRows, type ParsedImportRow } from "@/lib/import-products";
 import { uniqueSlug } from "@/lib/slug";
 import { writeAuditLog, getClientIp } from "@/lib/audit";
+import { deriveStockStatus } from "@/lib/stock-status";
 
 export const dynamic = "force-dynamic";
 
@@ -89,7 +90,7 @@ export async function POST(req: NextRequest) {
           const p = row.product!;
           if (row.action === "CREATE") {
             const slug = slugByRow.get(row.rowNumber)!;
-            const stockStatus = p.stock === 0 ? "OUT_OF_STOCK" : p.stock <= p.minimumStock ? "LOW_STOCK" : "IN_STOCK";
+            const stockStatus = deriveStockStatus(p.stock, p.minimumStock);
             const created = await tx.product.create({
               data: {
                 name: p.name,
@@ -132,7 +133,7 @@ export async function POST(req: NextRequest) {
             batchCreated += 1;
           } else if (row.action === "UPDATE" && row.existingProductId) {
             const existingInventory = await tx.inventory.findUnique({ where: { productId: row.existingProductId } });
-            const stockStatus = p.stock === 0 ? "OUT_OF_STOCK" : p.stock <= p.minimumStock ? "LOW_STOCK" : "IN_STOCK";
+            const stockStatus = deriveStockStatus(p.stock, p.minimumStock);
             await tx.product.update({
               where: { id: row.existingProductId },
               data: {
