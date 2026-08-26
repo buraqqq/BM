@@ -6,6 +6,9 @@ import { signOut, useSession } from "next-auth/react";
 const LINKS = [
   { href: "/admin/products", label: "Ürünler", icon: "fa-box" },
   { href: "/admin/categories", label: "Kategoriler", icon: "fa-layer-group" },
+  { href: "/admin/brands", label: "Markalar", icon: "fa-copyright" },
+  { href: "/admin/attributes", label: "Özellikler", icon: "fa-list-check" },
+  { href: "/admin/import-export", label: "İçe/Dışa Aktar", icon: "fa-file-csv" },
   { href: "/admin/inventory", label: "Stok", icon: "fa-warehouse" },
   { href: "/admin/pricing", label: "Fiyatlandırma", icon: "fa-tags" },
   { href: "/admin/campaigns", label: "Kampanyalar", icon: "fa-bullhorn" },
