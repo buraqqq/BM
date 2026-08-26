@@ -92,3 +92,39 @@ Cart                          — Cart/CartItem (yalnızca şema, bkz. yukarıs�
 ```
 
 Bu zincirin her halkası **bugün zaten çalışan, gerçek kod** — AI katmanı eklenirse (ör. "bu kritere uyan ürünleri bul" gibi bir arama/öneri motoru), `src/lib/search.ts`'in başındaki mimari nota göre `buildProductSearchWhere`'in ürettiği adayları girdi olarak alıp üstüne bir semantik yeniden-sıralama (rerank) katmanı eklemesi yeterli olur — mevcut route handler'lar veya bu zincirdeki hiçbir parça yeniden yazılmadan. Bu fazda hiçbir AI API'si veya öneri motoru GELİŞTİRİLMEDİ; bu bölüm yalnızca mimari dokümantasyondur.
+
+## FAZ 4A — Customer Account + Cart Foundation
+
+FAZ 3'ün "yalnızca şema" hazırlığı, bu fazda **gerçekten çalışan** müşteri hesabı ve sepetle dolduruldu — ödeme/sipariş işleme **hâlâ alınmadı** (bkz. "Kesinlikle Yapılmayanlar" altında).
+
+### Kimlik doğrulama — tek NextAuth, iki provider
+
+Ayrı bir "müşteri authentication sistemi" **inşa edilmedi**. Mevcut NextAuth (`src/lib/auth.ts`) admin akışının (`credentials`) yanına, ikinci bir `CredentialsProvider` (`customer-credentials`) eklendi — `User` modeli + bcrypt (cost 12, admin seed script'iyle aynı) ile doğrulanıyor. Oturum artık `session.user.kind: "admin" | "customer"` ile ayrışıyor; `requireAdmin()`/`requireCustomer()` (bkz. `src/lib/require-admin.ts`, `src/lib/require-customer.ts`) bu alanı kontrol ederek iki oturum türünün birbirinin API'lerine asla erişemediğini garanti eder — bu, `scripts/faz4a-commerce-e2e-check.ts` ile gerçek HTTP istekleriyle doğrulandı (bkz. FAZ4A raporu). Brute-force koruması (`LoginAttempt` tablosu, `isLoginRateLimited`/`recordLoginAttempt`) admin ile **aynı**, tek tablo üzerinden çalışıyor.
+
+### Guest cart (misafir sepeti)
+
+Kimliği doğrulanmamış bir ziyaretçi sepete ürün eklediğinde, `Cart.sessionToken` alanına bağlı, rastgele bir (`crypto.randomUUID()`) token üretilir ve **HttpOnly + secure + SameSite=Lax** bir cookie'de (`bm_guest_cart`, 30 gün) taşınır (bkz. `src/lib/cart-session.ts`). Gerçek kaynak (source of truth) her zaman DB'deki `Cart`/`CartItem` satırlarıdır — cookie yalnızca "hangi Cart satırı" referansını taşır, sepetin içeriği hiçbir zaman `localStorage`'da veya cookie'nin kendisinde tutulmaz.
+
+### Authenticated cart (kimliği doğrulanmış sepet)
+
+Müşteri giriş yaptığında sepeti artık `Cart.userId` üzerinden bulunur/oluşturulur — `GET /api/cart` hem misafir hem kimliği doğrulanmış istekte AYNI uçtur, farkı iç kısımda (`resolveCart`) çözülür, istemci tarafında hiçbir dallanma gerekmez (bkz. `src/components/CartPage.tsx`).
+
+### Cart merge (giriş sonrası birleştirme)
+
+Login sonrası istemci `POST /api/cart/merge`'i çağırır (bkz. `src/components/LoginForm.tsx`, `RegisterForm.tsx`). Sunucu tarafında: guest cookie'deki sepet + kullanıcının (varsa) mevcut sepeti bulunur, aynı üründe miktarlar toplanır (stok limitini aşmaz — bkz. `src/lib/cart-logic.ts` `mergeCartItems`, saf/DB'siz karar mantığı), birleşen satırlar için `computeFinalPrice` YENİDEN çağrılarak `unitPriceAtAdd` tazelenir, guest `Cart` silinir ve cookie temizlenir — tamamı tek bir `$transaction` içinde (race condition'a karşı, bkz. Bölüm 29 talimatı).
+
+### Price snapshot (fiyat anlık görüntüsü)
+
+Sepete eklenirken `CartItem.unitPriceAtAdd`, `computeFinalPrice()` (mevcut pricing engine, `src/lib/pricing.ts`) ile hesaplanıp kaydedilir — fiyat hesaplama mantığı **ikinci kez yazılmadı**. Bu alan bir SNAPSHOT'tır, ürün fiyatı/kampanyası sonradan değiştiğinde OTOMATİK güncellenmez (kasıtlı, FAZ3'ten beri dokümante edilmiş tasarım).
+
+### Price/stock/isActive revalidation (görüntülemede yeniden doğrulama)
+
+`GET /api/cart` (ve her mutation'ın döndürdüğü sepet gövdesi) her satır için GÜNCEL final fiyatı yeniden hesaplar, `unitPriceAtAdd` ile karşılaştırır (`priceChanged`), güncel stoğu (`Inventory.quantity`) `stockExceeded` olarak işaretler, ve ürünün hâlâ `isActive` olup olmadığını gösterir — bkz. `src/lib/cart-serialize.ts`. Hiçbiri SESSİZCE uygulanmaz: `unitPriceAtAdd` DB'de değiştirilmez, satır silinmez; kullanıcı `/sepet` sayfasında (`src/components/CartPage.tsx`) eski/yeni fiyatı, "stok yetersiz" ve "artık satışta değil" uyarılarını açıkça görür. Sepete ekleme/güncelleme sırasında ayrıca stok aşımı **reddedilir** (409) — ama bu bir REZERVASYON değildir: `Inventory.quantity` hiçbir şekilde değiştirilmez, `InventoryMovement` oluşturulmaz. Gerçek stok rezervasyonu, gelecekteki checkout fazının kapsamındadır.
+
+### Address ownership (adres sahiplik/IDOR savunması)
+
+`Address` modeli FAZ4A'da gerçekten kullanılmaya başlandı (FAZ1'den beri şemada duran ama 0 satırlı haliyle karşılaştırıldığında yeniden tanımlandı — bkz. migration `20260826200157_faz4a_customer_account_address_rework`, veri kaybı yok çünkü taşınacak gerçek veri yoktu). Her `/api/account/addresses/:id` isteği önce adresi id'ye göre bulur, SONRA `address.userId === session.user.id` kontrol eder; eşleşmezse (adres hiç yoksa da, BAŞKASINA aitse de) AYNI `404 NOT_FOUND` döner — 403 değil, bilinçli bir seçim (bkz. `docs/security.md`). `/api/cart/items/:id` de aynı deseni (`resolveOwnedItem`, `item.cartId !== resolved.cart.id` → 404) kullanır. İkisi de `scripts/faz4a-commerce-e2e-check.ts`'te GERÇEK ikinci bir kullanıcı ile GET/PATCH/DELETE denemeleri yapılarak doğrulandı.
+
+### Future checkout boundary (gelecekteki checkout sınırı)
+
+Bu fazda **kesinlikle eklenmeyenler**: Order modeli, Payment modeli, Shipping/Gel-Al modeli, ödeme sağlayıcı entegrasyonu (iyzico/PayTR/Stripe), kargo entegrasyonu, gerçek stok rezervasyonu, fatura. `Cart.status` alanı (`ACTIVE`/`CONVERTED`/`ABANDONED`, FAZ3'ten) hâlâ yalnızca bir yer tutucu — hiçbir kod `CONVERTED`'a geçiş yazmıyor. Sitedeki tek gerçek sipariş yolu hâlâ **WhatsApp'tır** (`ProductCard`/ürün detay sayfasındaki birincil CTA); FAZ4A'da eklenen "Sepete Ekle" WhatsApp'ın YANINDA ikincil bir aksiyondur, onun yerini almaz. Gerçek checkout (Cart → Order dönüşümü, ödeme, teslimat seçimi) gelecekteki bir faza bırakıldı.
