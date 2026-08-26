@@ -49,6 +49,20 @@ function formatTL(n: number) {
 // /kategori/... URL'si zaten yoktu (Bölüm 25'in "redirect planı" isteği bu
 // yüzden burada gerek yok: kırılan hiçbir şey olmadığından yönlendirme
 // tanımlanmadı — bkz. docs/catalog.md URL mimarisi notu).
+// TODO(CATEGORY TREE PRODUCT AGGREGATION) — FAZ 2.1 QA notu:
+// `children` yalnızca BİR seviye doğrudan alt kategoriyi hesaplar (C, B'nin
+// altındaysa ve B de A'nın altındaysa, A sayfası C'yi hiçbir yerde
+// göstermez). Aşağıdaki `productsRes` sorgusu da yalnızca `categoryId`
+// doğrudan bu kategoriye eşit ürünleri getirir (`/api/products?category=`,
+// bkz. src/app/api/products/route.ts) — B veya C'ye atanmış ürünler A
+// sayfasının listesine hiç dahil olmaz. Gerçek veride şu an hiç alt
+// kategori olmadığı için bu davranış canlı olarak test edilemedi (yalnızca
+// kod okunarak doğrulandı). Alt kategoriler eklendiğinde bu iki nokta
+// `getCategorySubtreeIds()` (bkz. src/lib/category-tree.ts — toplu fiyat/
+// kampanya kapsamında zaten kullanılıyor) ile tam alt ağaç toplamasına
+// geçirilmelidir: (1) children'ı yalnızca doğrudan değil rekürsif/ağaç
+// olarak render etmek, (2) productsRes sorgusunu `categoryId in
+// getCategorySubtreeIds(category.id)` şeklinde genişletmek.
 async function getCategory(slug: string): Promise<{ category: PublicCategory; children: PublicCategory[] } | null> {
   const { items } = await apiGet<CategoriesResponse>("/api/categories");
   const category = items.find((c) => c.slug === slug);

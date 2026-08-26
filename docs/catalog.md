@@ -32,7 +32,7 @@ FAZ 1'in ana sayfası (`/`, tek sayfalık, kategori tıklanınca modal açan den
 
 **Yönlendirme planı gerekmedi**: FAZ 1'de `/urun/...` veya `/kategori/...` altında hiçbir eski URL yayında değildi (tek sayfa + hash/modal mimarisiydi), bu yüzden bu iki yeni rota **hiçbir mevcut URL'yi kırmıyor** — ek, saf bir genişleme.
 
-**Bilinen basitleştirme**: `/kategori/:slug` sayfası yalnızca doğrudan alt kategorileri ve doğrudan bağlı ürünleri listeler (tam alt ağaç toplaması yapmaz) — çünkü gerçek veride şu an hiç alt kategori yok, bu davranışı canlı veriyle doğrulamanın bir yolu yoktu. Alt kategoriler eklendiğinde bu sayfa `getCategorySubtreeIds` benzeri bir mantığa geçirilmeli.
+**Bilinen basitleştirme — TODO(CATEGORY TREE PRODUCT AGGREGATION)**: `/kategori/:slug` sayfası yalnızca **bir seviye** doğrudan alt kategori ve yalnızca **doğrudan** bağlı ürünleri listeler, tam alt ağaç toplaması yapmaz. FAZ 2.1 QA turunda kod seviyesinde doğrulandı (`src/app/kategori/[slug]/page.tsx`): üç seviyeli bir A > B > C hiyerarşisinde, A sayfası B'yi (tek seviye) gösterir ama C'yi hiçbir yerde göstermez; A sayfasının ürün listesi yalnızca `categoryId` doğrudan A'ya eşit ürünleri içerir — B veya C'ye atanmış ürünler dahil olmaz (`/api/products?category=` filtresi `Product.categoryId` üzerinden tam eşleşme yapıyor, alt ağaç değil). Gerçek veride şu an hiç alt kategori olmadığı için bu davranış canlı olarak test edilemedi. Alt kategoriler eklendiğinde iki nokta `getCategorySubtreeIds()` (zaten toplu fiyat/kampanya kapsamında kullanılıyor) ile genişletilmeli: (1) `children` rekürsif/ağaç render'a, (2) ürün sorgusu `categoryId in subtreeIds`'e geçirilmeli. Kod içinde aynı TODO işaretlendi.
 
 ## Ürün SEO alanları
 
