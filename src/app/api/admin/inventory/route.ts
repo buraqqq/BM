@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/require-admin";
+import { getInventorySummary } from "@/lib/inventory-summary";
 
 export const dynamic = "force-dynamic";
 
@@ -64,21 +65,7 @@ export async function GET(req: NextRequest) {
 
   const filtered = filter === "unverified" ? items.filter((i) => !i.verified) : items;
 
-  const [lowStockCount, outOfStockCount, unverifiedInventoryCount] = await Promise.all([
-    prisma.inventory.count({ where: { stockStatus: "LOW_STOCK", product: { isActive: true } } }),
-    prisma.inventory.count({ where: { stockStatus: "OUT_OF_STOCK", product: { isActive: true } } }),
-    // Bir envanter "doğrulanmamış" sayılır <=> aktif ürün ise VE üzerinde
-    // MIGRATION dışında hiçbir hareket YOKSA. `movements: { none: {...} } }`
-    // ile doğrudan bu koşulu sorguluyoruz (inaktif/arşivlenmiş ürünler için
-    // yanlışlıkla "doğrulandı" sayıp toplam sayacını bozmasın diye product
-    // ilişkisi üzerinden isActive filtresi de burada uygulanıyor).
-    prisma.inventory.count({
-      where: { product: { isActive: true }, movements: { none: { type: { not: "MIGRATION" } } } },
-    }),
-  ]);
+  const summary = await getInventorySummary();
 
-  return NextResponse.json({
-    items: filtered,
-    summary: { lowStockCount, outOfStockCount, unverifiedInventoryCount },
-  });
+  return NextResponse.json({ items: filtered, summary });
 }
