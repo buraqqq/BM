@@ -1,7 +1,14 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { SiteHeader } from "@/components/SiteHeader";
+import { MobileTabBar } from "@/components/MobileTabBar";
+import { Breadcrumb } from "@/components/Breadcrumb";
+import { ProductCard, type ProductCardProduct } from "@/components/ProductCard";
+import { JsonLd } from "@/components/JsonLd";
+import { buildProductJsonLd, buildBreadcrumbJsonLd } from "@/lib/structured-data";
+import { buildProductBreadcrumb, type BreadcrumbCategory } from "@/lib/breadcrumb";
 import { apiGet } from "@/lib/api-base";
+import { absoluteUrl } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
 
@@ -10,6 +17,7 @@ interface PublicProductDetail {
   sku: string;
   name: string;
   slug: string;
+  categoryId: string;
   category: { id: string; slug: string; title: string };
   brand: { id: string; slug: string; name: string } | null;
   shortDescription: string | null;
@@ -29,6 +37,14 @@ interface PublicProductDetail {
   isFeatured: boolean;
   seoTitle: string | null;
   seoDescription: string | null;
+  specs: { name: string; value: string }[];
+}
+
+interface CategoriesResponse {
+  items: BreadcrumbCategory[];
+}
+interface RelatedResponse {
+  items: ProductCardProduct[];
 }
 
 type Settings = Record<string, string>;
@@ -53,16 +69,29 @@ async function getProduct(slug: string): Promise<PublicProductDetail | null> {
 export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
   const product = await getProduct(params.slug);
   if (!product) return { title: "Ürün bulunamadı" };
+  const title = product.seoTitle ?? `${product.name} | B&M Vourla`;
+  const description = product.seoDescription ?? product.shortDescription ?? undefined;
+  const url = absoluteUrl(`/urun/${product.slug}`);
+  const image = product.images[0]?.url;
   return {
-    title: product.seoTitle ?? `${product.name} | B&M Vourla`,
-    description: product.seoDescription ?? product.shortDescription ?? undefined,
+    title,
+    description,
+    alternates: { canonical: url },
+    openGraph: {
+      title,
+      description,
+      url,
+      type: "website",
+      images: image ? [{ url: image }] : undefined,
+    },
   };
 }
 
 export default async function ProductPage({ params }: { params: { slug: string } }) {
-  const [product, settings] = await Promise.all([
+  const [product, settings, categoriesRes] = await Promise.all([
     getProduct(params.slug),
     apiGet<Settings>("/api/settings"),
+    apiGet<CategoriesResponse>("/api/categories"),
   ]);
   if (!product) notFound();
 
@@ -71,25 +100,37 @@ export default async function ProductPage({ params }: { params: { slug: string }
   const primaryImage = product.images.find((i) => i.isPrimary) ?? product.images[0] ?? null;
   const waMessage = encodeURIComponent(`Merhaba, ${product.name} ürünü hakkında bilgi almak istiyorum.`);
 
+  const breadcrumb = buildProductBreadcrumb(categoriesRes.items, product.categoryId, product.name);
+  const productJsonLd = buildProductJsonLd({
+    name: product.name,
+    slug: product.slug,
+    sku: product.sku,
+    description: product.description,
+    shortDescription: product.shortDescription,
+    images: product.images,
+    brand: product.brand,
+    price: product.price,
+    inStock: product.inStock,
+  });
+
+  // Bölüm 4 — "İlgili Ürünler": aynı kategorideki diğer ürünler (kendisi hariç).
+  let related: ProductCardProduct[] = [];
+  try {
+    const relatedRes = await apiGet<RelatedResponse>(`/api/products?category=${encodeURIComponent(product.category.slug)}&pageSize=9`);
+    related = relatedRes.items.filter((p) => p.id !== product.id).slice(0, 8);
+  } catch {
+    related = [];
+  }
+
   return (
     <>
       <SiteHeader />
-      <section className="hero" style={{ minHeight: "24vh", paddingTop: 110 }}>
-        <div className="hero-content">
-          <p style={{ fontSize: "0.85rem", opacity: 0.8, marginBottom: 8 }}>
-            <a href="/" style={{ color: "inherit" }}>
-              Ana Sayfa
-            </a>{" "}
-            /{" "}
-            <a href={`/kategori/${product.category.slug}`} style={{ color: "inherit" }}>
-              {product.category.title}
-            </a>{" "}
-            / {product.name}
-          </p>
-        </div>
-      </section>
+      <JsonLd data={productJsonLd} />
+      <JsonLd data={buildBreadcrumbJsonLd(breadcrumb)} />
 
-      <section className="categories">
+      <Breadcrumb items={breadcrumb} />
+
+      <section className="categories" style={{ paddingTop: 30 }}>
         <div className="container">
           <div
             style={{
@@ -180,7 +221,7 @@ export default async function ProductPage({ params }: { params: { slug: string }
               </p>
 
               {product.description && (
-                <div>
+                <div style={{ marginBottom: 24 }}>
                   <h2 className="section-title" style={{ fontSize: "1.1rem", marginBottom: 8 }}>
                     Ürün Açıklaması
                   </h2>
@@ -188,9 +229,42 @@ export default async function ProductPage({ params }: { params: { slug: string }
                 </div>
               )}
 
+              {product.specs.length > 0 && (
+                <div>
+                  <h2 className="section-title" style={{ fontSize: "1.1rem", marginBottom: 4 }}>
+                    Teknik Özellikler
+                  </h2>
+                  <table className="spec-table">
+                    <tbody>
+                      {product.specs.map((s) => (
+                        <tr key={s.name}>
+                          <td>{s.name}</td>
+                          <td>{s.value}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
               <p style={{ marginTop: 24, fontSize: "0.8rem", color: "var(--gray-500)" }}>SKU: {product.sku}</p>
             </div>
           </div>
+
+          {related.length > 0 && (
+            <div className="related-products">
+              <div className="section-header">
+                <h2 className="section-title" style={{ fontSize: "1.5rem" }}>
+                  İlgili Ürünler
+                </h2>
+              </div>
+              <div className="product-grid">
+                {related.map((p) => (
+                  <ProductCard key={p.id} product={p} whatsappNumber={whatsappNumber} />
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </section>
 
@@ -203,6 +277,7 @@ export default async function ProductPage({ params }: { params: { slug: string }
           </div>
         </div>
       </footer>
+      <MobileTabBar whatsappNumber={whatsappNumber} />
     </>
   );
 }

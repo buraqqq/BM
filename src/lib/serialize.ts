@@ -7,6 +7,10 @@ type ProductWithRelations = Product & {
   brand?: Brand | null;
   images?: { url: string; altText: string | null; isPrimary: boolean; isMobilePrimary: boolean }[];
   inventory?: { quantity: number; stockStatus: string } | null;
+  attributeValues?: {
+    value: string;
+    attributeDefinition: { name: string; unit: string | null; sortOrder: number };
+  }[];
 };
 
 export function serializePublicProduct(product: ProductWithRelations, activeCampaigns: CampaignWithProducts[]) {
@@ -16,6 +20,7 @@ export function serializePublicProduct(product: ProductWithRelations, activeCamp
     sku: product.sku,
     name: product.name,
     slug: product.slug,
+    categoryId: product.categoryId,
     category: { id: product.category.id, slug: product.category.slug, title: product.category.title },
     brand: product.brand ? { id: product.brand.id, slug: product.brand.slug, name: product.brand.name } : null,
     shortDescription: product.shortDescription,
@@ -33,11 +38,23 @@ export function serializePublicProduct(product: ProductWithRelations, activeCamp
     },
     inStock: (product.inventory?.stockStatus ?? "IN_STOCK") !== "OUT_OF_STOCK",
     isFeatured: product.isFeatured,
+    // FAZ 3 — Bölüm 1: ana sayfadaki "Yeni Ürünler" vitrini ve ürün
+    // kartındaki "Yeni" rozeti için. Müşteriye stok adedi/maliyet gibi
+    // hassas bir alan değil, yalnızca tarih.
+    createdAt: product.createdAt,
     // Bölüm 30 — /urun/:slug sayfasının generateMetadata'sı için: admin'in
     // ürün SEO sekmesinde girdiği başlık/açıklama, boşsa ürün adı/kısa
     // açıklamaya düşer (bkz. src/app/urun/[slug]/page.tsx).
     seoTitle: product.seoTitle,
     seoDescription: product.seoDescription,
+    // Bölüm 4 — "Teknik Özellikler" tablosu; sortOrder'a göre sıralı.
+    specs: (product.attributeValues ?? [])
+      .slice()
+      .sort((a, b) => a.attributeDefinition.sortOrder - b.attributeDefinition.sortOrder)
+      .map((a) => ({
+        name: a.attributeDefinition.name,
+        value: a.attributeDefinition.unit ? `${a.value} ${a.attributeDefinition.unit}` : a.value,
+      })),
   };
 }
 

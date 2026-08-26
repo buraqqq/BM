@@ -1,10 +1,26 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { getSiteUrl } from "@/lib/seo";
 
+// FAZ 3 — Bölüm 7: metadataBase, alt sayfaların generateMetadata()'sında
+// döndürdüğü göreli Open Graph görsel URL'lerinin (ör. ürün görseli göreli
+// bir path olsaydı) doğru mutlak URL'e çözülmesi için gerekli. Şu an her
+// sayfa zaten absoluteUrl() ile mutlak URL üretiyor (bkz. src/lib/seo.ts)
+// ama metadataBase'in eksik olması Next.js'in build sırasında uyarı
+// vermesine neden oluyordu — bu düzeltildi.
 export const metadata: Metadata = {
-  title: "B&M Vourla – Bahçe & Mangal | Urla Altıntaş | 0506 055 75 30",
+  metadataBase: new URL(getSiteUrl()),
+  title: {
+    default: "B&M Vourla – Bahçe & Mangal | Urla Altıntaş | 0506 055 75 30",
+    template: "%s",
+  },
   description:
     "Altıntaş Mah. Besim Uyal Cad. No:121/A Urla/İzmir'de mangal, bahçe dekorasyonu, aydınlatma, ısıtma, soğutma ve niş ürünler.",
+  openGraph: {
+    siteName: "B&M Vourla",
+    locale: "tr_TR",
+    type: "website",
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

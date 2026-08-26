@@ -1,19 +1,24 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { SiteHeader } from "@/components/SiteHeader";
+import { MobileTabBar } from "@/components/MobileTabBar";
+import { Breadcrumb } from "@/components/Breadcrumb";
+import { ProductCard, type ProductCardProduct } from "@/components/ProductCard";
+import { ProductFilters } from "@/components/ProductFilters";
+import { Pagination } from "@/components/Pagination";
+import { JsonLd } from "@/components/JsonLd";
+import { buildBreadcrumbJsonLd } from "@/lib/structured-data";
+import { buildCategoryBreadcrumb, type BreadcrumbCategory } from "@/lib/breadcrumb";
 import { apiGet } from "@/lib/api-base";
+import { absoluteUrl } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
 
-interface PublicCategory {
-  id: string;
-  slug: string;
-  title: string;
+interface PublicCategory extends BreadcrumbCategory {
   shortDescription: string | null;
   description: string | null;
   icon: string | null;
   color: string | null;
-  parentId: string | null;
   seoTitle: string | null;
   seoDescription: string | null;
   productCount?: number;
@@ -21,84 +26,107 @@ interface PublicCategory {
 interface CategoriesResponse {
   items: PublicCategory[];
 }
-interface PublicProduct {
-  id: string;
-  slug: string;
-  name: string;
-  unitLabel: string;
-  price: {
-    base: number;
-    final: number;
-    discountSource: "campaign" | "sale" | "none";
-    discountPercent: number | null;
-  };
-  inStock: boolean;
-}
 interface ProductsResponse {
-  items: PublicProduct[];
+  items: ProductCardProduct[];
   total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+interface BrandsResponse {
+  items: { slug: string; name: string; productCount?: number }[];
+}
+type Settings = Record<string, string>;
+type SearchParams = { [key: string]: string | string[] | undefined };
+
+function first(v: string | string[] | undefined): string | undefined {
+  return Array.isArray(v) ? v[0] : v;
 }
 
-function formatTL(n: number) {
-  return new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 2 }).format(n);
-}
-
-// Bölüm 25/30 — /kategori/:slug herkese açık, SEO'lu kategori sayfası.
-// FAZ 1'in tek-sayfalık ("#kategoriler" modal) deneyimi HİÇ değiştirilmedi
-// — bu tamamen YENİ, ek bir derin bağlantı/URL'dir; bozulacak eski bir
-// /kategori/... URL'si zaten yoktu (Bölüm 25'in "redirect planı" isteği bu
-// yüzden burada gerek yok: kırılan hiçbir şey olmadığından yönlendirme
-// tanımlanmadı — bkz. docs/catalog.md URL mimarisi notu).
-// TODO(CATEGORY TREE PRODUCT AGGREGATION) — FAZ 2.1 QA notu:
-// `children` yalnızca BİR seviye doğrudan alt kategoriyi hesaplar (C, B'nin
-// altındaysa ve B de A'nın altındaysa, A sayfası C'yi hiçbir yerde
-// göstermez). Aşağıdaki `productsRes` sorgusu da yalnızca `categoryId`
-// doğrudan bu kategoriye eşit ürünleri getirir (`/api/products?category=`,
-// bkz. src/app/api/products/route.ts) — B veya C'ye atanmış ürünler A
-// sayfasının listesine hiç dahil olmaz. Gerçek veride şu an hiç alt
-// kategori olmadığı için bu davranış canlı olarak test edilemedi (yalnızca
-// kod okunarak doğrulandı). Alt kategoriler eklendiğinde bu iki nokta
-// `getCategorySubtreeIds()` (bkz. src/lib/category-tree.ts — toplu fiyat/
-// kampanya kapsamında zaten kullanılıyor) ile tam alt ağaç toplamasına
-// geçirilmelidir: (1) children'ı yalnızca doğrudan değil rekürsif/ağaç
-// olarak render etmek, (2) productsRes sorgusunu `categoryId in
-// getCategorySubtreeIds(category.id)` şeklinde genişletmek.
-async function getCategory(slug: string): Promise<{ category: PublicCategory; children: PublicCategory[] } | null> {
+// FAZ 2.1 QA notunda bırakılan CATEGORY TREE PRODUCT AGGREGATION TODO'su
+// burada çözüldü: `subtree=1` ile /api/products artık getCategorySubtreeIds
+// kullanarak seçilen kategori + TÜM alt kategorilerindeki ürünleri getiriyor
+// (bkz. src/lib/search.ts, src/app/api/products/route.ts). "Alt
+// Kategoriler" bölümü hâlâ yalnızca DOĞRUDAN alt kategorileri listeliyor —
+// bu kasıtlı ve standart bir e-ticaret deseni (A sayfası B'yi gösterir, C'yi
+// görmek için B'ye girilir); asıl eksik olan "A'nın ürün listesi C'deki
+// ürünleri hiç göstermiyordu" sorunuydu, o artık giderildi.
+async function getCategory(slug: string): Promise<{ category: PublicCategory; children: PublicCategory[]; all: PublicCategory[] } | null> {
   const { items } = await apiGet<CategoriesResponse>("/api/categories");
   const category = items.find((c) => c.slug === slug);
   if (!category) return null;
   const children = items.filter((c) => c.parentId === category.id);
-  return { category, children };
+  return { category, children, all: items };
+}
+
+function buildApiQuery(slug: string, sp: SearchParams): string {
+  const usp = new URLSearchParams();
+  usp.set("category", slug);
+  usp.set("subtree", "1");
+  const brand = first(sp.brand);
+  const minPrice = first(sp.minPrice);
+  const maxPrice = first(sp.maxPrice);
+  const inStock = first(sp.inStock);
+  const sort = first(sp.sort);
+  const page = first(sp.page);
+  if (brand) usp.set("brand", brand);
+  if (minPrice) usp.set("minPrice", minPrice);
+  if (maxPrice) usp.set("maxPrice", maxPrice);
+  if (inStock === "1") usp.set("inStock", "1");
+  if (sort) usp.set("sort", sort);
+  usp.set("page", page ?? "1");
+  usp.set("pageSize", "24");
+  return usp.toString();
 }
 
 export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
   const result = await getCategory(params.slug);
   if (!result) return { title: "Kategori bulunamadı" };
   const { category } = result;
+  const title = category.seoTitle ?? `${category.title} | B&M Vourla`;
+  const description = category.seoDescription ?? category.shortDescription ?? undefined;
+  const url = absoluteUrl(`/kategori/${category.slug}`);
   return {
-    title: category.seoTitle ?? `${category.title} | B&M Vourla`,
-    description: category.seoDescription ?? category.shortDescription ?? undefined,
+    title,
+    description,
+    alternates: { canonical: url },
+    openGraph: { title, description, url, type: "website" },
   };
 }
 
-export default async function CategoryPage({ params }: { params: { slug: string } }) {
+export default async function CategoryPage({ params, searchParams }: { params: { slug: string }; searchParams: SearchParams }) {
   const result = await getCategory(params.slug);
   if (!result) notFound();
-  const { category, children } = result;
+  const { category, children, all } = result;
 
-  const productsRes = await apiGet<ProductsResponse>(`/api/products?category=${encodeURIComponent(category.slug)}&pageSize=100`);
+  const apiQuery = buildApiQuery(category.slug, searchParams);
+  const [productsRes, brandsRes, settings] = await Promise.all([
+    apiGet<ProductsResponse>(`/api/products?${apiQuery}`),
+    apiGet<BrandsResponse>("/api/brands"),
+    apiGet<Settings>("/api/settings"),
+  ]);
+  const whatsappNumber = settings.contact_whatsapp ?? "905060557530";
+
+  const brand = first(searchParams.brand);
+  const minPrice = first(searchParams.minPrice);
+  const maxPrice = first(searchParams.maxPrice);
+  const inStock = first(searchParams.inStock) === "1";
+  const sort = first(searchParams.sort) ?? "relevance";
+  const page = Number(first(searchParams.page) ?? "1");
+  const hasActiveFilters = !!(brand || minPrice || maxPrice || inStock || (sort && sort !== "relevance"));
+  const categoryPath = `/kategori/${category.slug}`;
+
+  const breadcrumb = buildCategoryBreadcrumb(all, category.id);
 
   return (
     <>
       <SiteHeader />
-      <section className="hero" style={{ minHeight: "38vh", paddingTop: 110 }}>
+      <JsonLd data={buildBreadcrumbJsonLd(breadcrumb)} />
+
+      <Breadcrumb items={breadcrumb} />
+
+      <section className="hero" style={{ minHeight: "32vh", paddingTop: 30 }}>
         <div className="hero-content">
-          <p style={{ fontSize: "0.85rem", opacity: 0.8, marginBottom: 8 }}>
-            <a href="/" style={{ color: "inherit" }}>
-              Ana Sayfa
-            </a>{" "}
-            / {category.title}
-          </p>
           <div className="hero-brand" style={{ fontSize: "2.6rem" }}>
             <i className={`fas ${category.icon ?? "fa-leaf"}`} /> {category.title}
           </div>
@@ -111,47 +139,53 @@ export default async function CategoryPage({ params }: { params: { slug: string 
           {children.length > 0 && (
             <>
               <div className="section-header">
-                <h2 className="section-title">Alt Kategoriler</h2>
+                <h2 className="section-title" style={{ fontSize: "1.4rem" }}>
+                  Alt Kategoriler
+                </h2>
               </div>
-              <div className="cat-grid" style={{ marginBottom: 40 }}>
+              <div className="subcat-list">
                 {children.map((c) => (
-                  <a key={c.id} href={`/kategori/${c.slug}`} className="cat-card" style={{ ["--cat-color" as string]: c.color ?? "#E65100" }}>
-                    <span className="cat-icon">
-                      <i className={`fas ${c.icon ?? "fa-leaf"}`} />
-                    </span>
-                    <h3>{c.title}</h3>
-                    <p>{c.shortDescription}</p>
+                  <a key={c.id} href={`/kategori/${c.slug}`} className="subcat-chip">
+                    <i className={`fas ${c.icon ?? "fa-leaf"}`} /> {c.title}
+                    {c.productCount !== undefined ? ` (${c.productCount})` : ""}
                   </a>
                 ))}
               </div>
             </>
           )}
 
-          <div className="section-header">
-            <h2 className="section-title">{productsRes.total} Ürün</h2>
+          <div className="section-header-row">
+            <p className="results-meta">{productsRes.total} ürün (alt kategoriler dahil)</p>
           </div>
 
+          <ProductFilters
+            action={categoryPath}
+            clearHref={categoryPath}
+            hasActiveFilters={hasActiveFilters}
+            brands={brandsRes.items}
+            sort={sort}
+            brand={brand}
+            minPrice={minPrice}
+            maxPrice={maxPrice}
+            inStock={inStock}
+          />
+
           {productsRes.items.length === 0 ? (
-            <p style={{ textAlign: "center", color: "var(--gray-600)" }}>Bu kategoride henüz ürün yok.</p>
+            <p className="product-empty">Bu kategoride (ve alt kategorilerinde) henüz ürün yok.</p>
           ) : (
-            <ul className="modal-list" style={{ maxWidth: 700, margin: "0 auto" }}>
+            <div className="product-grid">
               {productsRes.items.map((p) => (
-                <li key={p.id}>
-                  <a href={`/urun/${p.slug}`} className="modal-name" style={{ color: "inherit", textDecoration: "none" }}>
-                    {p.name}
-                    {!p.inStock && <span className="badge badge-red" style={{ marginLeft: 8 }}>Tükendi</span>}
-                  </a>
-                  <span className="modal-price">
-                    {p.price.discountSource !== "none" && <span className="old-price">{formatTL(p.price.base)}</span>}
-                    {formatTL(p.price.final)} {p.unitLabel}
-                    {p.price.discountSource === "campaign" && p.price.discountPercent ? (
-                      <span className="campaign-badge">-%{p.price.discountPercent}</span>
-                    ) : null}
-                  </span>
-                </li>
+                <ProductCard key={p.id} product={p} whatsappNumber={whatsappNumber} />
               ))}
-            </ul>
+            </div>
           )}
+
+          <Pagination
+            basePath={categoryPath}
+            params={{ brand, minPrice, maxPrice, inStock: inStock ? "1" : undefined, sort }}
+            page={page}
+            totalPages={productsRes.totalPages}
+          />
         </div>
       </section>
 
@@ -164,6 +198,7 @@ export default async function CategoryPage({ params }: { params: { slug: string 
           </div>
         </div>
       </footer>
+      <MobileTabBar whatsappNumber={whatsappNumber} />
     </>
   );
 }
