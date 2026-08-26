@@ -5,6 +5,7 @@ import {
   addressUpdateSchema,
   cartAddItemSchema,
   cartUpdateItemSchema,
+  checkoutValidateSchema,
 } from "@/lib/customer-validation";
 
 // FAZ 4A — Bölüm 30: server-side Zod validation testleri (Test 1 — kayıt,
@@ -98,5 +99,35 @@ describe("cartAddItemSchema / cartUpdateItemSchema — Test 14: miktar doğrulam
   });
   it("ondalıklı miktar reddedilir (tam sayı olmalı)", () => {
     expect(cartUpdateItemSchema.safeParse({ quantity: 1.5 }).success).toBe(false);
+  });
+});
+
+describe("checkoutValidateSchema — FAZ 4B Test 8/12-16: teslimat yöntemi + client manipülasyonu", () => {
+  it("PICKUP için addressId olmadan geçerlidir", () => {
+    expect(checkoutValidateSchema.safeParse({ deliveryMethod: "PICKUP" }).success).toBe(true);
+  });
+  it("DELIVERY için addressId zorunludur", () => {
+    expect(checkoutValidateSchema.safeParse({ deliveryMethod: "DELIVERY" }).success).toBe(false);
+    expect(checkoutValidateSchema.safeParse({ deliveryMethod: "DELIVERY", addressId: "a1" }).success).toBe(true);
+  });
+  it("Test 8 — geçersiz deliveryMethod ('HACK') reddedilir", () => {
+    expect(checkoutValidateSchema.safeParse({ deliveryMethod: "HACK", addressId: "a1" }).success).toBe(false);
+  });
+  it("Test 12-16 — client'ın gönderdiği price/subtotal/total/shippingPrice/quantity alanları şemada tanımlı olmadığı için sessizce elenir (istemcinin gönderdiği hiçbir manipülasyon route'a ulaşmaz)", () => {
+    const parsed = checkoutValidateSchema.safeParse({
+      deliveryMethod: "PICKUP",
+      price: 1,
+      subtotal: 1,
+      total: 1,
+      shippingPrice: 1,
+      quantity: 999,
+    });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data).toEqual({ deliveryMethod: "PICKUP", addressId: undefined });
+      expect(parsed.data).not.toHaveProperty("price");
+      expect(parsed.data).not.toHaveProperty("total");
+      expect(parsed.data).not.toHaveProperty("quantity");
+    }
   });
 });
