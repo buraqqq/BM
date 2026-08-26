@@ -67,16 +67,11 @@ function formatTL(n: number) {
 }
 
 // ==========================================================
-// FAZ 4B — /checkout.
-//
-// Bölüm 1 — yalnızca sepeti OLAN kullanıcı erişebilir; boş sepet /sepet'e
-// yönlendirilir. Bölüm 3 — guest kullanıcı: sepeti KORUNUR, checkout'a
-// devam edemez, "Giriş Yap"/"Üye Ol" seçenekleri gösterilir (guest cart
-// cookie'sine dokunulmaz — login sonrası FAZ 4A'daki merge mekanizması
-// zaten çalışır, bkz. LoginForm/RegisterForm). Bölüm 14 — bu bileşendeki
-// state (seçili adres/teslimat yöntemi) yalnızca UI kolaylığı; GERÇEK
-// doğrulama/hesaplama her seçimde POST /api/checkout/validate ile
-// SUNUCUDAN istenir, hiçbir fiyat/toplam client'ta HESAPLANMAZ.
+// FAZ 4B — /checkout. FAZ 4C — "Ödemeye Geç" placeholder'ı GERÇEK sipariş
+// oluşturmaya bağlandı: buton artık POST /api/orders çağırır ve başarıda
+// /siparis/[orderNumber] sayfasına yönlendirir. Gerçek ödeme hâlâ YOK (Bölüm V)
+// — kullanıcı "Siparişi Oluştur" der, sipariş PENDING/paymentStatus=PENDING
+// olarak kaydedilir, yanıltıcı "ödeme alındı" mesajı gösterilmez.
 // ==========================================================
 export function CheckoutPage() {
   const router = useRouter();
@@ -89,7 +84,8 @@ export function CheckoutPage() {
   const [result, setResult] = useState<CheckoutResult | null>(null);
   const [validating, setValidating] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
-  const [payNotice, setPayNotice] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [orderError, setOrderError] = useState<string | null>(null);
 
   // Bölüm 1 — sepet durumu (guest dahil) her zaman kontrol edilir.
   useEffect(() => {
@@ -138,6 +134,35 @@ export function CheckoutPage() {
     }
   }
 
+  // FAZ 4C — gerçek sipariş oluşturma. İstemci yalnızca addressId + deliveryMethod
+  // gönderir; fiyat/toplam SUNUCUDA hesaplanır (Bölüm F adım 14). Başarıda
+  // /siparis/[orderNumber] sayfasına gidilir.
+  async function submitOrder() {
+    if (!deliveryMethod) return;
+    setSubmitting(true);
+    setOrderError(null);
+    try {
+      const res = await fetch("/api/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          addressId: deliveryMethod === "DELIVERY" ? selectedAddressId : null,
+          deliveryMethod,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.orderNumber) {
+        router.push(`/siparis/${data.orderNumber}`);
+        return;
+      }
+      setOrderError(data?.message ?? "Sipariş oluşturulamadı, lütfen tekrar deneyin.");
+    } catch {
+      setOrderError("Sunucuya ulaşılamadı, lütfen tekrar deneyin.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   useEffect(() => {
     if (status !== "authenticated" || !deliveryMethod) return;
     if (deliveryMethod === "DELIVERY" && !selectedAddressId) {
@@ -168,7 +193,7 @@ export function CheckoutPage() {
         <span className="checkout-progress-sep">→</span>
         <span className="checkout-progress-step active">Teslimat</span>
         <span className="checkout-progress-sep">→</span>
-        <span className="checkout-progress-step disabled">Ödeme (Yakında)</span>
+        <span className="checkout-progress-step disabled">Sipariş</span>
       </div>
 
       <div className="checkout-grid">
@@ -329,17 +354,17 @@ export function CheckoutPage() {
             {result && !result.valid && result.errors && (
               <div style={{ marginBottom: 14 }}>
                 {result.errors.map((e, i) => (
-                  <p className="account-error" key={i} style={{ marginBottom: 8 }}>
+                  <p className="account-error" key={i}>
                     {e.message}
                   </p>
                 ))}
               </div>
             )}
 
-            {result?.valid && result.warnings && result.warnings.length > 0 && (
+            {result && result.valid && result.warnings && result.warnings.length > 0 && (
               <div style={{ marginBottom: 14 }}>
                 {result.warnings.map((w, i) => (
-                  <p key={i} className="cart-line-warning" style={{ display: "block", marginBottom: 6 }}>
+                  <p className="account-sub" key={i} style={{ color: "var(--orange)" }}>
                     {w.message}
                   </p>
                 ))}
@@ -359,9 +384,9 @@ export function CheckoutPage() {
               <span>{formatTL(result?.pricing?.total ?? cart.totals.subtotal)} ₺</span>
             </div>
 
-            {payNotice && (
-              <p className="account-success" style={{ marginTop: 14 }}>
-                {payNotice}
+            {orderError && (
+              <p className="account-error" style={{ marginTop: 14 }}>
+                {orderError}
               </p>
             )}
 
@@ -369,14 +394,10 @@ export function CheckoutPage() {
               type="button"
               className="btn btn-primary"
               style={{ width: "100%", marginTop: 16, opacity: result?.valid ? 1 : 0.5, cursor: result?.valid ? "pointer" : "not-allowed" }}
-              disabled={!result?.valid || validating}
-              onClick={() =>
-                setPayNotice(
-                  "Ödeme adımı yakında aktif olacaktır. Bu fazda ödeme alınmıyor — siparişinizi şimdilik WhatsApp üzerinden tamamlayabilirsiniz."
-                )
-              }
+              disabled={!result?.valid || validating || submitting}
+              onClick={submitOrder}
             >
-              Ödemeye Geç
+              {submitting ? "Oluşturuluyor…" : "Siparişi Oluştur"}
             </button>
           </div>
         </div>
