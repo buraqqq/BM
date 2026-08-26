@@ -176,3 +176,121 @@ Cart API (`POST /api/cart/items`) zaten yalnızca `productId`/`quantity` kabul e
 ### Order/Payment/Shipping boundary (kesin sınır — FAZ4B'de de değişmedi)
 
 Bu fazda **kesinlikle eklenmeyenler**: `Order`/`OrderItem`/`OrderAddressSnapshot` modeli, `Payment`/`PaymentTransaction` modeli, `Shipping`/`InventoryReservation` modeli, `Invoice` modeli, ödeme sağlayıcı entegrasyonu (iyzico/PayTR/Stripe/Shopier/PayPal/banka API), gerçek kargo API entegrasyonu (Aras/Yurtiçi/MNG/PTT/Sürat/HepsiJET). `/checkout` sayfasındaki "Ödemeye Geç" butonu **hiçbir gerçek ödeme başlatmaz** — tıklandığında yalnızca "ödeme adımı yakında aktif olacak" placeholder mesajı gösterir, asla "ödeme başarılı" gibi yanıltıcı bir metin YAZDIRMAZ. Sitedeki tek gerçek sipariş yolu hâlâ **WhatsApp'tır**.
+
+---
+
+# Sipariş (Order) — FAZ 4C
+
+## Kapsam ve kesin sınır
+
+FAZ 4C, FAZ 4B'deki **yalnızca-doğrulayan** checkout akışını **gerçek sipariş
+oluşturmaya** taşır. Bu fazın kesin sınırı:
+
+- ✅ **Order oluşturma var** — `POST /api/orders` gerçek `Order` + `OrderItem` +
+  `OrderAddressSnapshot` + `OrderStatusHistory` satırı yazar.
+- ❌ **Gerçek ödeme yok** — iyzico/PayTR/Stripe/kredi kartı/banka entegrasyonu
+  YOK. `paymentStatus` her zaman `PENDING` başlar; sahte "ödeme alındı" durumu
+  üretilmez. Ödeme, SONRAKİ fazın konusudur.
+
+Akış zinciri:
+
+```
+Sepet → Checkout Validation → Order Creation → Inventory Update
+                                            → Customer Order History
+                                            → Admin Order Management
+```
+
+## Order lifecycle (durum geçişleri)
+
+Durum geçiş kuralları `src/lib/order-logic.ts` içinde **saf, DB'siz** fonksiyon
+olarak tutulur (birim testli). Yalnızca anlamlı geçişlere izin verilir:
+
+```
+PENDING → CONFIRMED → PREPARING → READY → SHIPPED → COMPLETED
+   │          │           │         │
+   └──────────┴───────────┴─────────┴──→ CANCELLED
+```
+
+- Terminal durumlar (`COMPLETED`, `CANCELLED`) hiçbir yere geçemez.
+- `CANCELLED → SHIPPED` gibi mantıksız geçişler **server-side reddedilir**
+  (422 `INVALID_TRANSITION`).
+- `READY → COMPLETED` doğrudan geçişi mağazadan-gel-al (PICKUP) senaryosunu
+  destekler; kargo (DELIVERY) `SHIPPED → COMPLETED` yolunu izler.
+
+## Order creation flow
+
+`POST /api/orders` (`src/app/api/orders/route.ts`) şu sırayla çalışır:
+
+1. `requireCustomer()` — yalnızca oturumlu müşteri (401; admin oturumu reddedilir).
+2. `checkoutValidateSchema` (FAZ 4B'den **aynen yeniden kullanılır**) — gövde
+   yalnızca `addressId` + `deliveryMethod` içerir; fiyat/subtotal/total/quantity
+   gibi hiçbir parasal alan istemciden okunmaz.
+3. `resolveCart` → aktif sepet; boşsa 422 `EMPTY_CART`.
+4. DELIVERY ise `findOwnedAddress` (paylaşılan IDOR deseni) → 422 `ADDRESS_NOT_FOUND`.
+5. Sepet ürünleri **yeniden okunur**, her biri `computeFinalPrice` (pricing
+   engine **yeniden çağrılır, ikinci kez yazılmaz**) ile fiyatlanır; aktiflik
+   ve stok yeniden doğrulanır.
+6. `buildOrderLine` + `sumOrderSubtotal` (order-logic) → ara toplam;
+   `calculateShippingPrice` + `computeCheckoutTotals` (checkout-logic, FAZ 4B) → toplam.
+7. Tek `$transaction` içinde: sepeti atomik "claim" et, stoğu atomik düş,
+   `InventoryMovement(SALE)` yaz, `Order` + `OrderItem` + `OrderAddressSnapshot`
+   + ilk `OrderStatusHistory(PENDING)` oluştur.
+
+## Snapshot stratejisi
+
+Sipariş, oluşturulduktan sonra değişebilen her veriyi **dondurur**:
+
+- **OrderItem**: `productName` / `sku` / `unitPrice` / `lineTotal` snapshot.
+  `productId` referansı korunur ama `onDelete: SetNull` — ürün ileride silinse
+  bile satır ayakta kalır; ad/SKU/fiyat geçmiş siparişte değişmez.
+- **OrderAddressSnapshot**: sipariş anındaki adres kopyalanır; müşteri adresini
+  sonradan değiştirirse/silerse geçmiş sipariş etkilenmez. `Address` modeli
+  siparişin doğrudan kaynağı olarak kullanılmaz.
+- **Shipping snapshot**: `shippingAmount` + `shippingComputed` + `shippingNote`.
+  Kargo hesaplanmıyorsa `computed:false` olarak kaydedilir — 0 TL'yi gerçek
+  "ücretsiz kargo" gibi göstermeyiz.
+
+## Cart → Order dönüşümü
+
+Başarılı siparişte sepet `status: "CONVERTED"`'a çekilir. Bu, çift-submit
+korumasının mekanik garantisidir:
+
+- Sepet claim'i `updateMany({ where: { id, status: "ACTIVE" } })` ile **atomik**
+  yapılır — yalnızca BİR istek `count=1` alabilir.
+- `Order.cartId` `@unique` olduğu için aynı sepetten ikinci bir sipariş yapısal
+  olarak oluşamaz.
+- İkinci istek ya `ORDER_ALREADY_CREATED` (409, mevcut sipariş numarasıyla) alır
+  ya da yeni boş sepet üzerinden `EMPTY_CART` alır — duplicate order yok.
+
+## Inventory davranışı
+
+- Sepet/checkout **stok rezervasyonu değildir** (FAZ 4A/4B davranışı korunur).
+- Gerçek sipariş transaction'ı içinde stok **atomik** düşülür:
+  `updateMany({ where: { quantity: { gte: X } }, data: { decrement: X } })` —
+  SQL düzeyinde `UPDATE ... WHERE quantity >= X` olduğu için negatif stoğa düşmek
+  imkânsızdır. `count=0` ise yetersiz stok → transaction geri alınır (422).
+- Stok takip edilmeyen ürünler (`Inventory` satırı yok) sınırsız sayılır.
+- Başarılı siparişte `InventoryMovement(type: "SALE", quantityChange: -X,
+  resultingQuantity: yeni, reason: "Sipariş <no>")` yazılır ve `stockStatus`
+  `deriveStockStatus` ile tazelenir.
+
+## Payment status sınırı
+
+`PAYMENT_STATUSES = PENDING | PAID | FAILED | REFUNDED` (enums.ts). `CANCELLED`
+bilinçli olarak listede yoktur — sipariş iptali `Order.status` tarafından
+temsil edilir. Gerçek ödeme yok; admin yalnızca **manuel** `paymentStatus`
+güncelleyebilir (her değişiklik AuditLog'a yazılır).
+
+## Duplicate order koruması
+
+Yukarıdaki "Cart → Order dönüşümü" bölümündeki atomik claim + `cartId @unique`
+ikilisi, hem ardışık hem eşzamanlı çift-submit'i engeller. Ek idempotency
+katmanı gerekmedi (SQLite'ın tek-yazıcı modeli bunu yeterince güçlü kılar).
+
+## Gelecekte Payment entegrasyonu
+
+`Order.paymentStatus` + `currency` + `customerNote` alanları, gelecekteki bir
+ödeme sağlayıcısının (iyzico/PayTR/Stripe) üzerine inşa edilebilmesi için
+hazır durumda. Entegrasyon, yalnızca `paymentStatus`'u `PENDING → PAID/FAILED`
+yönünde güncelleyen yeni bir uç + geri-çağrı (callback) eklemeyi gerektirecek;
+mevcut Order modeli/snapshot yapısı değişmeyecek.

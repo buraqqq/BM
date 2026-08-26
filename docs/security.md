@@ -81,3 +81,61 @@ Yeni stok/fiyat/kampanya/import-export uçlarının audit log kapsamı: `PRODUCT
 - CSP (Content-Security-Policy) header'ı henüz eklenmedi (yalnızca X-Frame-Options vb. eklendi) — Font Awesome/Google Fonts gibi harici kaynaklar kullanıldığı için dikkatli bir CSP politikası gerektirir, ayrı bir iterasyon önerilir.
 - 2FA / tek kullanımlık kod desteği yok.
 - Dosya yükleme antivirüs/malware taraması yok (yalnızca MIME + boyut kontrolü var).
+
+---
+
+# Sipariş güvenliği — FAZ 4C
+
+## Order IDOR
+
+Müşteri sipariş detayı `GET /api/orders/[orderNumber]`, `order.userId ===
+session.user.id` kontrolüyle korunur. **Var olmayan** ve **başkasına ait** sipariş
+AYNI 404 `ORDER_NOT_FOUND` döner — "bu sipariş var ama sana ait değil" bilgisi
+dışarı sızdırılmaz (FAZ 4A `findOwnedAddress` / FAZ 4B checkout deseninin order
+karşılığı). Müşteri listesi (`GET /api/orders`) zaten yalnızca `userId` filtresiyle
+sorgulanır.
+
+## Client fiyat/toplam/quantity manipülasyonu
+
+`POST /api/orders` gövdesi yalnızca `addressId` + `deliveryMethod` içerir
+(`checkoutValidateSchema`, FAZ 4B'den aynen). `price` / `subtotal` / `total` /
+`shippingPrice` / `quantity` şemada **tanımlı değildir** — zod bunları sessizce
+eler; sunucu tüm parasal değerleri `computeFinalPrice` + `computeCheckoutTotals`
+ile kendi hesaplar. İstemcinin gönderdiği hiçbir parasal değer source of truth
+değildir.
+
+## Duplicate submit koruması
+
+Sipariş, sepeti `ACTIVE → CONVERTED`'a çeken **atomik** `updateMany` ile korunur;
+`Order.cartId` `@unique`'dir. Bu ikili, hem ardışık hem eşzamanlı çift-submit'te
+tek sipariş garantiler. İkinci istek `409 ORDER_ALREADY_CREATED` (mevcut sipariş
+numarasıyla) veya `422 EMPTY_CART` alır.
+
+## Transaction atomicity
+
+Order oluşturma tek `prisma.$transaction` içindedir: sepet claim + stok düşme +
+InventoryMovement + Order + OrderItem + AddressSnapshot + StatusHistory **ya hepsi
+ya hiçbiri**. Herhangi bir adım başarısız olursa (örn. yetersiz stok → `count=0`)
+transaction geri alınır — yarım Order/OrderItem/Inventory durumu kalmaz.
+
+## Inventory race condition / SQLite sınırları
+
+- Stok, `updateMany({ where: { quantity: { gte: X } }, data: { decrement: X } })`
+  ile **koşullu tek SQL ifadesi** olarak düşülür. `WHERE quantity >= X` guard'ı
+  SQL düzeyinde atomiktir; eşzamanlı isteklerde bile negatif stoğa düşmek
+  imkânsızdır.
+- **Bilinçli sınır**: SQLite tek-yazıcı (single-writer) modeli kullanır ve tüm
+  veritabanını kilitler; dağıtık/multi-master concurrency garanti etmez. Bu
+  ölçekte (küçük işletme, tek süreç) koşullu UPDATE yeterince güçlüdür, ancak
+  çok-düğümlü bir dağıtıma geçilirse Postgres'e geçiş + satır-kilidi (row lock)
+  veya ayrı bir stok rezervasyon servisi gerekir. Bu, gizlenmez.
+
+## Admin sipariş yönetimi
+
+- Admin order uçları `requireAdmin(["ADMIN", "SUPER_ADMIN"])` gerektirir (müşteri
+  PII içerdiği için STAFF hariç — audit-log ile aynı hassasiyet).
+- Durum geçişleri `order-logic.ts` transition kurallarıyla **server-side**
+  doğrulanır; geçersiz geçiş 422 `INVALID_TRANSITION`.
+- Durum/ödeme durumu değişiklikleri `writeAuditLog` ile (`ORDER_STATUS_UPDATE`,
+  `ORDER_PAYMENT_STATUS_UPDATE`) kaydedilir; manuel ödeme durumu değişimi de
+  audit'e tabidir.
