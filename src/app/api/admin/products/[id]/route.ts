@@ -8,7 +8,16 @@ import { decimalToNumber } from "@/lib/serialize";
 export const dynamic = "force-dynamic";
 
 async function findProductOr404(id: string) {
-  const product = await prisma.product.findUnique({ where: { id }, include: { category: true, inventory: true } });
+  const product = await prisma.product.findUnique({
+    where: { id },
+    include: {
+      category: true,
+      brand: true,
+      inventory: true,
+      images: { orderBy: { sortOrder: "asc" } },
+      attributeValues: { include: { attributeDefinition: true } },
+    },
+  });
   return product;
 }
 
@@ -46,7 +55,6 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
       ...(data.name !== undefined ? { name: data.name } : {}),
       ...(data.barcode !== undefined ? { barcode: data.barcode } : {}),
       ...(data.categoryId !== undefined ? { categoryId: data.categoryId } : {}),
-      ...(data.subcategoryId !== undefined ? { subcategoryId: data.subcategoryId } : {}),
       ...(data.brandId !== undefined ? { brandId: data.brandId } : {}),
       ...(data.shortDescription !== undefined ? { shortDescription: data.shortDescription } : {}),
       ...(data.description !== undefined ? { description: data.description } : {}),
@@ -62,8 +70,22 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
       ...(data.seoTitle !== undefined ? { seoTitle: data.seoTitle } : {}),
       ...(data.seoDescription !== undefined ? { seoDescription: data.seoDescription } : {}),
     },
-    include: { category: true, inventory: true },
+    include: { category: true, brand: true, inventory: true },
   });
+
+  if (data.minimumStock !== undefined && existing.inventory) {
+    await prisma.inventory.update({ where: { productId: params.id }, data: { lowStockThreshold: data.minimumStock } });
+  }
+
+  if (data.attributes !== undefined) {
+    // Basit ve güvenli strateji: mevcut değerleri sil, gönderileni yeniden yaz.
+    await prisma.productAttributeValue.deleteMany({ where: { productId: params.id } });
+    if (data.attributes.length > 0) {
+      await prisma.productAttributeValue.createMany({
+        data: data.attributes.map((a) => ({ productId: params.id, attributeDefinitionId: a.attributeDefinitionId, value: a.value })),
+      });
+    }
+  }
 
   if (priceChanged) {
     await prisma.priceHistory.create({

@@ -1,9 +1,10 @@
-import type { Product, Category, Banner, Campaign } from "@prisma/client";
+import type { Product, Category, Banner, Campaign, Brand } from "@prisma/client";
 import { computeFinalPrice, type CampaignWithProducts } from "@/lib/pricing";
 import { PRODUCT_UNIT_LABELS, type ProductUnit } from "@/lib/enums";
 
 type ProductWithRelations = Product & {
   category: Category;
+  brand?: Brand | null;
   images?: { url: string; altText: string | null; isPrimary: boolean }[];
   inventory?: { quantity: number; stockStatus: string } | null;
 };
@@ -16,6 +17,7 @@ export function serializePublicProduct(product: ProductWithRelations, activeCamp
     name: product.name,
     slug: product.slug,
     category: { id: product.category.id, slug: product.category.slug, title: product.category.title },
+    brand: product.brand ? { id: product.brand.id, slug: product.brand.slug, name: product.brand.name } : null,
     shortDescription: product.shortDescription,
     description: product.description,
     unit: product.unit,
@@ -34,15 +36,42 @@ export function serializePublicProduct(product: ProductWithRelations, activeCamp
   };
 }
 
-export function serializeCategory(category: Category & { _count?: { products: number } }) {
+export function serializeCategory(
+  category: Category & { _count?: { products: number }; children?: unknown[] }
+) {
   return {
     id: category.id,
     slug: category.slug,
     title: category.title,
     shortDescription: category.shortDescription,
+    description: category.description,
+    imageUrl: category.imageUrl,
     icon: category.icon,
     color: category.color,
+    parentId: category.parentId,
+    depth: category.depth,
+    path: category.path,
+    sortOrder: category.sortOrder,
+    isActive: category.isActive,
+    isFeatured: category.isFeatured,
+    seoTitle: category.seoTitle,
+    seoDescription: category.seoDescription,
     productCount: category._count?.products ?? undefined,
+  };
+}
+
+export function serializeBrand(brand: Brand & { _count?: { products: number } }) {
+  return {
+    id: brand.id,
+    slug: brand.slug,
+    name: brand.name,
+    logoUrl: brand.logoUrl,
+    description: brand.description,
+    website: brand.website,
+    isActive: brand.isActive,
+    seoTitle: brand.seoTitle,
+    seoDescription: brand.seoDescription,
+    productCount: brand._count?.products ?? undefined,
   };
 }
 

@@ -13,7 +13,6 @@ function campaign(overrides: Partial<CampaignWithProducts> = {}): CampaignWithPr
     discountValue: 20 as unknown as CampaignWithProducts["discountValue"],
     scope: "GLOBAL",
     categoryId: null,
-    subcategoryId: null,
     startDate: new Date(Date.now() - 86400000),
     endDate: new Date(Date.now() + 86400000),
     isActive: true,
@@ -23,6 +22,7 @@ function campaign(overrides: Partial<CampaignWithProducts> = {}): CampaignWithPr
     createdAt: new Date(),
     updatedAt: new Date(),
     products: [],
+    categorySubtreeIds: undefined,
     ...overrides,
   };
 }
@@ -31,7 +31,6 @@ function product(overrides: Record<string, unknown> = {}) {
   return {
     id: "p1",
     categoryId: "cat-1",
-    subcategoryId: null,
     price: 1500 as unknown as number,
     compareAtPrice: null,
     salePrice: null,
@@ -61,11 +60,23 @@ describe("computeFinalPrice", () => {
   });
 
   it("CATEGORY kapsamlı kampanya yalnızca eşleşen kategoriye uygulanır", () => {
-    const camp = campaign({ scope: "CATEGORY", categoryId: "cat-1" });
+    // categorySubtreeIds gerçek sistemde getCurrentlyActiveCampaigns() tarafından
+    // kategori ağacından hesaplanır (bkz. category-tree.test.ts); burada tek bir
+    // kategori (alt kategorisi olmayan) simüle ediliyor.
+    const camp = campaign({ scope: "CATEGORY", categoryId: "cat-1", categorySubtreeIds: ["cat-1"] });
     const matching = computeFinalPrice(product({ categoryId: "cat-1", price: 1000 }), [camp]);
     const nonMatching = computeFinalPrice(product({ categoryId: "cat-2", price: 1000 }), [camp]);
     expect(matching.finalPrice).toBe(800);
     expect(nonMatching.finalPrice).toBe(1000);
+  });
+
+  it("CATEGORY kapsamlı kampanya alt kategorilerdeki ürünleri de kapsar (Bölüm 17)", () => {
+    // "Bahçe" kategorisi kampanyaya seçilirse, "Bahçe > Dekorasyon > Saksılar"
+    // alt ağacındaki bir ürün de kampanyadan yararlanmalı.
+    const camp = campaign({ scope: "CATEGORY", categoryId: "bahce", categorySubtreeIds: ["bahce", "dekorasyon", "saksilar"] });
+    const result = computeFinalPrice(product({ categoryId: "saksilar", price: 1000 }), [camp]);
+    expect(result.finalPrice).toBe(800);
+    expect(result.discountSource).toBe("campaign");
   });
 
   it("PRODUCT kapsamlı kampanya yalnızca CampaignProduct listesindeki ürüne uygulanır", () => {

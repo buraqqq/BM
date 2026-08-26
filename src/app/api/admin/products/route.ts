@@ -5,10 +5,14 @@ import { productCreateSchema } from "@/lib/validation";
 import { writeAuditLog, getClientIp } from "@/lib/audit";
 import { decimalToNumber } from "@/lib/serialize";
 import { uniqueSlug } from "@/lib/slug";
+import { getCategorySubtreeIds } from "@/lib/category-tree";
+import { checkDuplicates } from "@/lib/duplicate-check";
 
 export const dynamic = "force-dynamic";
 
-// Bölüm 10 — toplu ürün yönetimi: arama, kategori/stok/aktiflik/fiyat aralığı filtresi.
+// Bölüm 10/35/36 — toplu ürün yönetimi: arama (isim/SKU/barkod), kategori
+// (+alt kategoriler)/marka/stok/aktiflik/fiyat aralığı filtresi,
+// server-side pagination (Bölüm 35 — 10.000+ ürün hedefi).
 export async function GET(req: NextRequest) {
   const auth = await requireAdmin();
   if (!auth.ok) return auth.response;
@@ -16,6 +20,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const search = searchParams.get("search")?.trim();
   const categoryId = searchParams.get("categoryId") ?? undefined;
+  const brandId = searchParams.get("brandId") ?? undefined;
   const activeParam = searchParams.get("active"); // "true" | "false" | null(=all)
   const stockParam = searchParams.get("stock"); // "in" | "low" | "out"
   const minPrice = searchParams.get("minPrice");
@@ -24,11 +29,16 @@ export async function GET(req: NextRequest) {
   const pageSize = Math.min(200, Math.max(1, Number(searchParams.get("pageSize") ?? 50)));
 
   const where: Record<string, unknown> = {};
-  if (categoryId) where.categoryId = categoryId;
+  if (categoryId) {
+    // Bölüm 3: kategori filtresi seçilen kategori + tüm alt kategorilerini kapsar.
+    const subtreeIds = await getCategorySubtreeIds(categoryId);
+    where.categoryId = { in: subtreeIds };
+  }
+  if (brandId) where.brandId = brandId;
   if (activeParam === "true") where.isActive = true;
   if (activeParam === "false") where.isActive = false;
   if (search) {
-    where.OR = [{ name: { contains: search } }, { sku: { contains: search } }];
+    where.OR = [{ name: { contains: search } }, { sku: { contains: search } }, { barcode: { contains: search } }];
   }
   if (minPrice || maxPrice) {
     where.price = {
@@ -43,7 +53,7 @@ export async function GET(req: NextRequest) {
   const [items, total] = await Promise.all([
     prisma.product.findMany({
       where,
-      include: { category: true, inventory: true },
+      include: { category: true, brand: true, inventory: true },
       orderBy: { updatedAt: "desc" },
       skip: (page - 1) * pageSize,
       take: pageSize,
@@ -100,6 +110,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "VALIDATION_ERROR", message: `SKU zaten kullanılıyor: ${sku}` }, { status: 400 });
   }
 
+  // Bölüm 27 — deterministik duplicate uyarısı (hard block değil): aynı
+  // kategorideki ürünlerle isim benzerliği / barkod çakışması kontrol edilir.
+  const sameCategoryProducts = await prisma.product.findMany({
+    where: { categoryId: data.categoryId },
+    select: { id: true, name: true, sku: true, barcode: true },
+    take: 2000,
+  });
+  const duplicateWarnings = checkDuplicates({ name: data.name, sku, barcode: data.barcode }, sameCategoryProducts);
+
   const product = await prisma.product.create({
     data: {
       name: data.name,
@@ -107,7 +126,6 @@ export async function POST(req: NextRequest) {
       barcode: data.barcode ?? null,
       slug,
       categoryId: data.categoryId,
-      subcategoryId: data.subcategoryId ?? null,
       brandId: data.brandId ?? null,
       shortDescription: data.shortDescription ?? null,
       description: data.description ?? null,
@@ -122,8 +140,16 @@ export async function POST(req: NextRequest) {
       isFeatured: data.isFeatured ?? false,
       seoTitle: data.seoTitle ?? null,
       seoDescription: data.seoDescription ?? null,
-      inventory: { create: { quantity: data.stock ?? 0 } },
+      inventory: {
+        create: {
+          quantity: data.stock ?? 0,
+          ...(data.minimumStock !== undefined ? { lowStockThreshold: data.minimumStock } : {}),
+        },
+      },
       priceHistory: { create: { field: "price", oldValue: null, newValue: data.price, reason: "create", changedById: auth.session.user.id } },
+      ...(data.attributes && data.attributes.length > 0
+        ? { attributeValues: { create: data.attributes.map((a) => ({ attributeDefinitionId: a.attributeDefinitionId, value: a.value })) } }
+        : {}),
     },
     include: { category: true, inventory: true },
   });
@@ -138,7 +164,7 @@ export async function POST(req: NextRequest) {
   });
 
   return NextResponse.json(
-    decimalToNumber({ ...product }, ["price", "compareAtPrice", "salePrice", "costPrice", "taxRate"]),
+    { ...decimalToNumber({ ...product }, ["price", "compareAtPrice", "salePrice", "costPrice", "taxRate"]), duplicateWarnings },
     { status: 201 }
   );
 }

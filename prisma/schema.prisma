@@ -34,6 +34,7 @@ model AdminUser {
   auditLogs      AuditLog[]
   priceChanges   PriceHistory[]
   inventoryMoves InventoryMovement[]
+  importJobs     ImportJob[]
 
   @@map("admin_users")
 }
@@ -89,47 +90,70 @@ model Address {
 // Katalog
 // ----------------------------------------------------------
 
+// ----------------------------------------------------------
+// FAZ 2 mimari kararı — Kategori Hiyerarşisi
+// FAZ 1'deki ayrı Category/SubCategory (2 seviyeli, sabit) modeli, hiçbir
+// gerçek veri taşımadığı doğrulandıktan sonra (0 SubCategory kaydı, 0
+// Product.subcategoryId, 0 Campaign scope=SUBCATEGORY — bkz. FAZ2 raporu
+// Bölüm B) kendine-referanslı (self-referential), sınırsız derinlikte bir
+// ağaca dönüştürüldü: "Bahçe > Bahçe Dekorasyonu > Saksılar" gibi 3+ seviyeli
+// yapılar artık desteklenir. `path` alanı materialized-path deseniyle
+// tutulur (ör. "/catA/catB/catC/") — 10.000+ ürün ölçeğinde "bu kategori
+// ve tüm alt kategorileri" sorgusunu tek bir indexed `startsWith` ile,
+// recursive CTE gerektirmeden yanıtlar (bkz. docs/catalog.md).
+// ----------------------------------------------------------
+
 model Category {
-  id               String   @id @default(cuid())
-  slug             String   @unique
+  id               String  @id @default(cuid())
+  slug             String  @unique
   title            String
   shortDescription String?
+  description      String?
+  imageUrl         String?
   icon             String?
   color            String?
-  sortOrder        Int      @default(0)
-  isActive         Boolean  @default(true)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  sortOrder        Int     @default(0)
+  isActive         Boolean @default(true)
+  isFeatured       Boolean @default(false)
+  seoTitle         String?
+  seoDescription   String?
 
-  subcategories SubCategory[]
-  products      Product[]
-  banners       Banner[]
-  campaigns     Campaign[]
+  parentId String?
+  parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children Category[] @relation("CategoryTree")
 
+  // Materialized path: "/<ata1Id>/<ata2Id>/.../<selfId>/". Kök kategoriler
+  // için "/<selfId>/". src/lib/category-tree.ts tarafından create/move
+  // sırasında hesaplanır ve alt ağaç taşındığında cascade güncellenir.
+  path  String @default("/")
+  depth Int    @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  products             Product[]
+  banners              Banner[]
+  campaigns            Campaign[]
+  attributeDefinitions ProductAttributeDefinition[]
+
+  @@index([parentId])
+  @@index([path])
   @@map("categories")
 }
 
-model SubCategory {
-  id         String   @id @default(cuid())
-  slug       String   @unique
-  name       String
-  categoryId String
-  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
-  sortOrder  Int      @default(0)
-  isActive   Boolean  @default(true)
-  createdAt  DateTime @default(now())
-
-  products  Product[]
-  campaigns Campaign[]
-
-  @@index([categoryId])
-  @@map("subcategories")
-}
-
 model Brand {
-  id       String    @id @default(cuid())
-  slug     String    @unique
-  name     String
+  id             String   @id @default(cuid())
+  slug           String   @unique
+  name           String
+  logoUrl        String?
+  description    String?
+  website        String?
+  isActive       Boolean  @default(true)
+  seoTitle       String?
+  seoDescription String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
   products Product[]
 
   @@map("brands")
@@ -159,17 +183,15 @@ model ProductTag {
 // StockStatus: IN_STOCK | LOW_STOCK | OUT_OF_STOCK
 
 model Product {
-  id            String       @id @default(cuid())
-  sku           String       @unique
-  barcode       String?      @unique
-  name          String
-  slug          String       @unique
-  categoryId    String
-  category      Category     @relation(fields: [categoryId], references: [id])
-  subcategoryId String?
-  subcategory   SubCategory? @relation(fields: [subcategoryId], references: [id])
-  brandId       String?
-  brand         Brand?       @relation(fields: [brandId], references: [id])
+  id         String   @id @default(cuid())
+  sku        String   @unique
+  barcode    String?  @unique
+  name       String
+  slug       String   @unique
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id])
+  brandId    String?
+  brand      Brand?   @relation(fields: [brandId], references: [id])
 
   shortDescription String?
   description      String?
@@ -206,6 +228,7 @@ model Product {
   tags             ProductTag[]
   campaignProducts CampaignProduct[]
   banners          Banner[]
+  attributeValues  ProductAttributeValue[]
 
   @@index([categoryId])
   @@index([isActive])
@@ -238,6 +261,50 @@ model ProductVariant {
 
   @@index([productId])
   @@map("product_variants")
+}
+
+// ----------------------------------------------------------
+// FAZ 2 — Esnek Ürün Özellikleri (Attributes)
+// Bitki, hortum, tohum gibi çok farklı ürün gruplarının birbirinden tamamen
+// farklı özellik setleri olabileceği için (güneş ihtiyacı, uzunluk, gramaj...)
+// bu alanlar Product tablosuna hard-code edilmedi. Bunun yerine tanım (hangi
+// özellik, hangi kategoride, hangi tipte) ve değer (hangi ürün, ne değer)
+// ayrı tutulur — kategori bazında farklı özellik setleri desteklenir.
+// ----------------------------------------------------------
+
+model ProductAttributeDefinition {
+  id          String    @id @default(cuid())
+  categoryId  String? // null = tüm kategorilerde kullanılabilir (global özellik)
+  category    Category? @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  key         String // makine-okunur ad, ör. "gunes_ihtiyaci"
+  name        String // insan-okunur ad, ör. "Güneş İhtiyacı"
+  // TEXT | NUMBER | BOOLEAN | SELECT (bkz. src/lib/enums.ts)
+  type        String    @default("TEXT")
+  unit        String? // ör. "cm", "°C", "gün"
+  optionsJson String? // SELECT tipi için seçenek listesi, JSON dizi
+  sortOrder   Int       @default(0)
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+
+  values ProductAttributeValue[]
+
+  @@unique([categoryId, key])
+  @@index([categoryId])
+  @@map("product_attribute_definitions")
+}
+
+model ProductAttributeValue {
+  id                    String                     @id @default(cuid())
+  productId             String
+  product               Product                    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  attributeDefinitionId String
+  attributeDefinition   ProductAttributeDefinition @relation(fields: [attributeDefinitionId], references: [id], onDelete: Cascade)
+  value                 String // tüm tipler (TEXT/NUMBER/BOOLEAN/SELECT) burada metin olarak tutulur, tip attributeDefinition.type'a göre uygulama katmanında yorumlanır
+
+  @@unique([productId, attributeDefinitionId])
+  @@index([productId])
+  @@index([attributeDefinitionId])
+  @@map("product_attribute_values")
 }
 
 // ----------------------------------------------------------
@@ -308,13 +375,15 @@ model Campaign {
   // PERCENTAGE | FIXED_AMOUNT (bkz. src/lib/enums.ts)
   discountType  String
   discountValue Decimal
-  // PRODUCT | CATEGORY | SUBCATEGORY | GLOBAL (bkz. src/lib/enums.ts)
+  // PRODUCT | CATEGORY | GLOBAL (bkz. src/lib/enums.ts).
+  // FAZ 2'de SUBCATEGORY kaldırıldı: kategoriler artık ağaç yapısında,
+  // CATEGORY kapsamı seçilen kategori VE tüm alt kategorilerini otomatik
+  // kapsar (bkz. src/lib/category-tree.ts, computeFinalPrice). Hiçbir
+  // gerçek kampanya SUBCATEGORY kullanmıyordu (bkz. FAZ2 raporu Bölüm B).
   scope         String
 
-  categoryId    String?
-  category      Category?    @relation(fields: [categoryId], references: [id])
-  subcategoryId String?
-  subcategory   SubCategory? @relation(fields: [subcategoryId], references: [id])
+  categoryId String?
+  category   Category? @relation(fields: [categoryId], references: [id])
 
   startDate DateTime
   endDate   DateTime
@@ -396,6 +465,38 @@ model AuditLog {
   @@index([entity, entityId])
   @@index([createdAt])
   @@map("audit_logs")
+}
+
+// ----------------------------------------------------------
+// FAZ 2 — CSV/Excel İçe Aktarma İşleri
+// Her import çalıştırması bir ImportJob kaydı olarak izlenir: kaç satır
+// işlendi, kaçı başarılı/hatalı/yeni/güncellenen, hata detayları (satır
+// bazlı) — Bölüm 25/38 gereksinimi. Satır bazlı ayrı tablo yerine JSON
+// olarak tutuldu (SQLite + mevcut ölçek için yeterli, sorgu ihtiyacı yok).
+// ----------------------------------------------------------
+
+model ImportJob {
+  id       String @id @default(cuid())
+  fileName String
+  // PENDING | VALIDATED | IMPORTING | COMPLETED | FAILED (bkz. enums.ts)
+  status   String @default("PENDING")
+
+  totalRows    Int @default(0)
+  successCount Int @default(0)
+  errorCount   Int @default(0)
+  createdCount Int @default(0)
+  updatedCount Int @default(0)
+
+  columnMappingJson String? // { "Ürün Adı": "name", "SKU": "sku", ... }
+  errorsJson        String? // [{ row, field, message }, ...]
+
+  createdByAdminId String?
+  createdByAdmin   AdminUser? @relation(fields: [createdByAdminId], references: [id])
+  createdAt        DateTime   @default(now())
+  finishedAt       DateTime?
+
+  @@index([status])
+  @@map("import_jobs")
 }
 
 // ----------------------------------------------------------

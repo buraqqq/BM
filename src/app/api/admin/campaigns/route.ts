@@ -15,7 +15,7 @@ export async function GET() {
 
   const campaigns = await prisma.campaign.findMany({
     orderBy: { startDate: "desc" },
-    include: { products: { include: { product: true } }, category: true, subcategory: true },
+    include: { products: { include: { product: true } }, category: true },
   });
   const now = new Date();
   return NextResponse.json({
@@ -50,7 +50,6 @@ export async function POST(req: NextRequest) {
       discountValue: data.discountValue,
       scope: data.scope,
       categoryId: data.scope === "CATEGORY" ? data.categoryId ?? null : null,
-      subcategoryId: data.scope === "SUBCATEGORY" ? data.subcategoryId ?? null : null,
       startDate: data.startDate,
       endDate: data.endDate,
       bannerText: data.bannerText ?? null,

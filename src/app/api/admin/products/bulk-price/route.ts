@@ -4,15 +4,22 @@ import { requireAdmin } from "@/lib/require-admin";
 import { bulkPriceUpdateSchema } from "@/lib/validation";
 import { applyBulkAdjustment } from "@/lib/pricing";
 import { writeAuditLog, getClientIp } from "@/lib/audit";
+import { getCategorySubtreeIds } from "@/lib/category-tree";
 
 export const dynamic = "force-dynamic";
 
 /**
- * Bölüm 16 — Toplu fiyat revizyonu için servis/API altyapısı.
- * UI bu fazda tam yapılmadı (bkz. docs/admin.md) ama servis çalışır ve
- * test edilmiştir: kategoriye/alt kategoriye veya seçili ürün id listesine
- * +% / -% / +TL / -TL uygulanabilir. dryRun:true ile önizleme yapılabilir
- * (hiçbir kayıt değişmez, yalnızca hesaplanan sonuç döner).
+ * Bölüm 13/14/15 — Toplu Fiyat Motoru.
+ * Kapsam: tüm ürünler (allProducts:true, kazara tetiklenmeyi önlemek için
+ * EXPLICIT olmalı) / kategori (+ tüm alt kategorileri) / marka / seçili
+ * ürün id listesi (filtre sonucu ürünler de admin UI'da bu listeye
+ * dönüştürülüp gönderilir).
+ * İşlem: +% / -% / +TL / -TL / belirli fiyata getir (SET_PRICE).
+ * ÖNİZLEME ZORUNLU: dryRun:true her zaman ÖNCE çağrılmalı — bu uç "hemen
+ * uygula" davranışına sahip değildir, admin UI akışı her zaman
+ * önizle → onayla → uygula sırasını izler (bkz. docs/pricing.md).
+ * UYGULAMA TRANSACTION İÇİNDE: yarım kalan toplu güncelleme veritabanını
+ * tutarsız bırakmaz (Bölüm 37).
  */
 export async function POST(req: NextRequest) {
   const auth = await requireAdmin(["ADMIN", "SUPER_ADMIN"]);
@@ -23,21 +30,27 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: "VALIDATION_ERROR", details: parsed.error.flatten() }, { status: 400 });
   }
-  const { categoryId, subcategoryId, productIds, adjustment, dryRun } = parsed.data;
+  const { allProducts, categoryId, brandId, productIds, adjustment, dryRun } = parsed.data;
 
-  if (!categoryId && !subcategoryId && (!productIds || productIds.length === 0)) {
+  if (!allProducts && !categoryId && !brandId && (!productIds || productIds.length === 0)) {
     return NextResponse.json(
-      { error: "VALIDATION_ERROR", message: "categoryId, subcategoryId veya productIds alanlarından en az biri gerekli" },
+      {
+        error: "VALIDATION_ERROR",
+        message: "allProducts, categoryId, brandId veya productIds alanlarından en az biri gerekli (kazara toplu işlemi önlemek için hiçbiri varsayılan olarak 'tümü' anlamına gelmez)",
+      },
       { status: 400 }
     );
   }
 
   const where: Record<string, unknown> = {};
-  if (categoryId) where.categoryId = categoryId;
-  if (subcategoryId) where.subcategoryId = subcategoryId;
+  if (categoryId) {
+    const subtreeIds = await getCategorySubtreeIds(categoryId);
+    where.categoryId = { in: subtreeIds };
+  }
+  if (brandId) where.brandId = brandId;
   if (productIds && productIds.length > 0) where.id = { in: productIds };
 
-  const products = await prisma.product.findMany({ where });
+  const products = await prisma.product.findMany({ where, select: { id: true, name: true, price: true } });
 
   const preview = products.map((p) => ({
     id: p.id,
@@ -47,7 +60,7 @@ export async function POST(req: NextRequest) {
   }));
 
   if (dryRun) {
-    return NextResponse.json({ dryRun: true, affectedCount: preview.length, preview: preview.slice(0, 50) });
+    return NextResponse.json({ dryRun: true, affectedCount: preview.length, preview: preview.slice(0, 200) });
   }
 
   await prisma.$transaction(
@@ -72,7 +85,7 @@ export async function POST(req: NextRequest) {
     entity: "Product",
     entityId: null,
     ipAddress: getClientIp(req),
-    metadata: { affectedCount: preview.length, adjustment, categoryId, subcategoryId, productIds },
+    metadata: { affectedCount: preview.length, adjustment, allProducts, categoryId, brandId, productIds },
   });
 
   return NextResponse.json({ dryRun: false, affectedCount: preview.length });
