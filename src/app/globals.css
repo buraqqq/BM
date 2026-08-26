@@ -382,6 +382,44 @@ a { text-decoration: none; color: inherit; }
 .product-card-secondary-cta:disabled { opacity: 0.5; cursor: not-allowed; }
 .add-to-cart-box { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-top: 14px; }
 
+/* ==========================================================
+   FAZ 4B — Bölüm 22/23/26: /checkout. Desktop'ta 2 kolon (sol: teslimat
+   bilgileri/yöntemi/özet ürünler, sağ: sipariş özeti kutusu — sticky),
+   mobilde tek kolon + toplam/CTA kutusu akışın en altında görünür kalır
+   (mevcut MobileTabBar ile çakışmaması için sticky bottom KULLANILMADI,
+   yalnızca normal akışta en altta — Bölüm 26).
+   ========================================================== */
+.checkout-shell { padding: 130px 20px 90px; max-width: 1100px; margin: 0 auto; }
+.checkout-progress { display: flex; align-items: center; gap: 10px; margin-bottom: 24px; flex-wrap: wrap; }
+.checkout-progress-step { font-size: 0.82rem; font-weight: 700; padding: 7px 16px; border-radius: 50px; background: rgba(255,255,255,0.05); color: rgba(255,255,255,0.45); border: 1px solid rgba(255,255,255,0.1); }
+.checkout-progress-step.done { color: var(--green); border-color: var(--green); }
+.checkout-progress-step.active { color: var(--cream); background: var(--orange); border-color: var(--orange); }
+.checkout-progress-step.disabled { color: rgba(255,255,255,0.3); font-style: italic; }
+.checkout-progress-sep { color: rgba(255,255,255,0.25); }
+
+.checkout-grid { display: grid; grid-template-columns: 1fr 380px; gap: 24px; align-items: start; }
+.checkout-side { position: sticky; top: 130px; }
+@media (max-width: 860px) {
+  .checkout-grid { grid-template-columns: 1fr; }
+  .checkout-side { position: static; }
+}
+
+.checkout-address-card { text-align: left; width: 100%; cursor: pointer; font-family: var(--font-body); }
+.checkout-address-card.selected { border-color: var(--green); box-shadow: 0 0 0 2px var(--green) inset; }
+
+.delivery-method-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 16px; }
+@media (max-width: 480px) { .delivery-method-grid { grid-template-columns: 1fr; } }
+.delivery-method-card { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 20px 14px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.12); border-radius: 14px; color: var(--cream); font-weight: 700; font-size: 0.9rem; cursor: pointer; font-family: var(--font-body); }
+.delivery-method-card i { font-size: 1.5rem; color: rgba(255,255,255,0.4); }
+.delivery-method-card.selected { border-color: var(--orange); background: rgba(230,81,0,0.1); }
+.delivery-method-card.selected i { color: var(--orange); }
+
+.pickup-info-card { margin-top: 16px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 16px 18px; font-size: 0.85rem; color: rgba(255,255,255,0.7); line-height: 1.6; }
+.pickup-info-card h3 { font-family: var(--font-heading); color: var(--cream); margin-bottom: 6px; }
+.pickup-info-card a { color: var(--orange); font-weight: 700; }
+
+.checkout-summary { max-width: none; margin: 0; }
+
 /* FAZ 2 — Sekmeli ürün formu (Bölüm 8) */
 .product-tabs { display: flex; gap: 4px; flex-wrap: wrap; border-bottom: 2px solid var(--gray-200); margin-bottom: 18px; }
 .product-tab { padding: 8px 14px; border: none; background: transparent; font-size: 0.8rem; font-weight: 700; color: var(--gray-600); cursor: pointer; border-bottom: 3px solid transparent; margin-bottom: -2px; }

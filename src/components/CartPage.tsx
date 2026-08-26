@@ -173,8 +173,13 @@ export function CartPage() {
           <span>Ara Toplam</span>
           <span>{formatTL(cart.totals.subtotal)} ₺</span>
         </div>
+        {/* FAZ 4B — Bölüm 1: checkout'a giriş noktası. Sepet boşken bu buton
+            zaten render edilmiyor (yukarıdaki empty-state dalı). */}
+        <a href="/checkout" className="btn btn-primary" style={{ display: "block", textAlign: "center", marginTop: 16 }}>
+          Checkout&apos;a Geç
+        </a>
         <p style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.4)", marginTop: 10 }}>
-          Bu fazda ödeme/sipariş işlemi bulunmuyor — mevcut siparişler WhatsApp üzerinden alınır.
+          Bu fazda ödeme işlemi bulunmuyor — mevcut siparişler WhatsApp üzerinden alınır.
         </p>
       </div>
     </div>
