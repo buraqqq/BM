@@ -698,3 +698,31 @@ model Setting {
 
   @@map("settings")
 }
+// ----------------------------------------------------------
+// FAZ 5 — Gelir Ortaklığı (Affiliate) ürünleri
+//
+// Tasarım motoru (AI Garden Designer), iç envanterde OLMAYAN ama tasarımın
+// tamamlayıcısı olan ürünleri (canlı bitki, toprak, saksı, otomatik sulama,
+// bahçe mobilyası vb.) "affiliate" olarak önerebilir. Bu ürünler AYRI bir
+// tabloda tutulur ki Product tablosunun 257 aktif / 260 toplam baseline'ı
+// değişmesin (iç envanter ile dış/gelir-ortaklığı kataloğu ayrı kaygılardır).
+// `affiliateUrl` gerçek partner bağlantısını, `vendor` satıcıyı tutar.
+// ----------------------------------------------------------
+
+model AffiliateProduct {
+  id            String   @id @default(cuid())
+  name          String
+  vendor        String
+  affiliateUrl  String
+  // Tasarım BOM bileşeni türü: bitki | toprak | saksi | sulama | mobilya |
+  // aydinlatma | dekor | gubre | alet (bkz. ai-designer-logic.ts)
+  category      String
+  estimatedPrice Decimal?
+  imageUrl      String?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([category])
+  @@map("affiliate_products")
+}
