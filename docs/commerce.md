@@ -125,6 +125,54 @@ Sepete eklenirken `CartItem.unitPriceAtAdd`, `computeFinalPrice()` (mevcut prici
 
 `Address` modeli FAZ4A'da gerçekten kullanılmaya başlandı (FAZ1'den beri şemada duran ama 0 satırlı haliyle karşılaştırıldığında yeniden tanımlandı — bkz. migration `20260826200157_faz4a_customer_account_address_rework`, veri kaybı yok çünkü taşınacak gerçek veri yoktu). Her `/api/account/addresses/:id` isteği önce adresi id'ye göre bulur, SONRA `address.userId === session.user.id` kontrol eder; eşleşmezse (adres hiç yoksa da, BAŞKASINA aitse de) AYNI `404 NOT_FOUND` döner — 403 değil, bilinçli bir seçim (bkz. `docs/security.md`). `/api/cart/items/:id` de aynı deseni (`resolveOwnedItem`, `item.cartId !== resolved.cart.id` → 404) kullanır. İkisi de `scripts/faz4a-commerce-e2e-check.ts`'te GERÇEK ikinci bir kullanıcı ile GET/PATCH/DELETE denemeleri yapılarak doğrulandı.
 
-### Future checkout boundary (gelecekteki checkout sınırı)
+### Future checkout boundary (gelecekteki checkout sınırı) — FAZ4A'da yazılmıştı, FAZ4B ile güncellendi
 
-Bu fazda **kesinlikle eklenmeyenler**: Order modeli, Payment modeli, Shipping/Gel-Al modeli, ödeme sağlayıcı entegrasyonu (iyzico/PayTR/Stripe), kargo entegrasyonu, gerçek stok rezervasyonu, fatura. `Cart.status` alanı (`ACTIVE`/`CONVERTED`/`ABANDONED`, FAZ3'ten) hâlâ yalnızca bir yer tutucu — hiçbir kod `CONVERTED`'a geçiş yazmıyor. Sitedeki tek gerçek sipariş yolu hâlâ **WhatsApp'tır** (`ProductCard`/ürün detay sayfasındaki birincil CTA); FAZ4A'da eklenen "Sepete Ekle" WhatsApp'ın YANINDA ikincil bir aksiyondur, onun yerini almaz. Gerçek checkout (Cart → Order dönüşümü, ödeme, teslimat seçimi) gelecekteki bir faza bırakıldı.
+FAZ4A'da "gelecekteki bir faza bırakıldı" denen checkout'un **temeli** FAZ4B'de kuruldu (bkz. aşağıdaki bölüm) — ama gerçek sınır (Order/Payment/Shipping) YERİNDE KALDI, yalnızca bir adım öne (checkout preview/validation) taşındı. `Cart.status` hâlâ yer tutucu; hiçbir kod `CONVERTED`'a geçiş yazmıyor. Sitedeki tek gerçek sipariş yolu hâlâ **WhatsApp'tır**.
+
+## FAZ 4B — Checkout Foundation + Delivery Selection
+
+FAZ4A'nın "Cart → Customer → Address" temelinin üzerine, **Order OLUŞTURMADAN** (bu fazda hâlâ yasak — bkz. aşağıdaki sınır) sepetten ödemeye giden akışın önizleme/doğrulama katmanı kuruldu: `/checkout` sayfası + `POST /api/checkout/validate` ucu.
+
+### Checkout mimarisi
+
+Tek yeni API ucu: `POST /api/checkout/validate` (`src/app/api/checkout/validate/route.ts`). Bu uç **hiçbir DB satırı yaratmaz/değiştirmez** — yalnızca mevcut Cart/Address/Product/Inventory verisini okur, sunucu tarafında yeniden hesaplar ve yapılandırılmış bir önizleme döner. Tüm saf karar mantığı (`isValidDeliveryMethod`, `buildAddressSnapshot`, `calculateShippingPrice`, `computeCheckoutTotals`, `deriveCheckoutIssues`, `assembleCheckoutResponse`) `src/lib/checkout-logic.ts`'te DB'siz, birim test edilebilir fonksiyonlar olarak tutuldu — route.ts yalnızca bunları çağıran ince bir DB-orkestrasyon katmanı (mevcut `cart-logic.ts`/`address-rules.ts` deseniyle bire bir aynı).
+
+Response şekli her zaman tek biçim: `{valid:true, cart, delivery, pricing, warnings}` ya da `{valid:false, errors}` — bu şekil `assembleCheckoutResponse()` tarafından TEK bir yerde üretilir.
+
+### Delivery method abstraction (teslimat yöntemi soyutlaması)
+
+`DELIVERY_METHODS = ["PICKUP", "DELIVERY"]` (`src/lib/enums.ts`, projenin "SQLite enum desteklemiyor, tek kaynak enums.ts" konvansiyonuyla tutarlı) — henüz hiçbir Prisma modeline gömülü değil (Order yok), yalnızca zod şeması ve checkout-logic bu listeyi referans alıyor. Gelecekte üçüncü bir yöntem (ör. `EXPRESS_DELIVERY`) eklenmesi tek bir listeye eklemekle sınırlı kalacak şekilde tasarlandı.
+
+- **PICKUP (Gel-Al)**: `getPickupLocation()` (`src/lib/pickup-location.ts`) mevcut `Setting` tablosundaki **gerçek** işletme verisini (`contact_address_line`, `contact_phone`, `contact_hours`, `contact_maps_url`, `site_name` — FAZ1'den beri var, `/api/settings` public ucu da bunları kullanıyor) okur. Sistemde gerçekten bulunmayan TEK veri — "tahmini hazırlık süresi" — uydurulmadı, açık bir yer tutucu metinle döndü.
+- **DELIVERY (Kargo)**: gerçek bir kargo API'si yok — `calculateShippingPrice("DELIVERY")` `{amount:0, computed:false, note:"Kargo ücreti henüz hesaplanmadı."}` döner. `computed:false` bayrağı, bu 0'ın gerçek bir hesaplama DEĞİL "henüz yok" anlamına geldiğini API tüketicisine (ve UI'a) açıkça işaretler.
+
+Kargo mantığı `computeFinalPrice()`'a (pricing engine) **gömülmedi** — `calculateShippingPrice()` tamamen ayrı, kendi dosyasında; ileride gerçek bir kargo API'si eklendiğinde yalnızca bu fonksiyonun gövdesi değişecek.
+
+### Address snapshot stratejisi (Bölüm 5)
+
+`buildAddressSnapshot()` (`src/lib/checkout-logic.ts`) seçilen `Address` kaydından, ileride bire bir bir `OrderAddressSnapshot` satırına kopyalanabilecek sabit bir alan kümesini (firstName/lastName/phone/city/district/neighborhood/addressLine/postalCode/country) PICK eder — `id`/`userId`/`isDefault`/`title` gibi checkout'ta anlamsız/gereksiz alanlar sızmaz. **`OrderAddressSnapshot` modeli bu fazda oluşturulmadı** — yalnızca ileride kolayca eklenebilecek bir alan sözleşmesi (contract) hazırlandı; müşteri adresini sonradan değiştirse/silse bile checkout anında üretilen bu nesne, checkout isteğinin ömrü boyunca bağımsız kalır (kalıcı olarak saklanmıyor, yalnızca response'ta dönüyor).
+
+### Price/stock/isActive revalidation (checkout'ta yeniden doğrulama)
+
+Checkout, cart-serialize.ts'in **zaten** hesapladığı güncel bayrakları (`isActive`/`priceChanged`/`stockExceeded`) `deriveCheckoutIssues()` ile iki kategoriye ayırır:
+
+- **Hata (checkout'u BLOKE eder, `valid:false`)**: satıştan kalkmış ürün (`PRODUCT_INACTIVE`) veya yetersiz stok (`STOCK_INSUFFICIENT`). Kullanıcı `/sepet`'e dönüp düzeltmeli — checkout içinde ikinci bir ürün/quantity yönetimi YOK (Bölüm 13).
+- **Uyarı (checkout'a İZİN VERİR, `valid:true` kalabilir)**: yalnızca fiyat değişikliği (`PRICE_CHANGED`) — toplam her zaman GÜNCEL fiyattan hesaplanır (Cart'takiyle aynı ilke), eski/yeni fiyat kullanıcıya `warnings` alanında açıkça gösterilir, hiçbir zaman sessizce uygulanmaz.
+
+Hiçbiri stok/envanter satırını değiştirmez: `Inventory.quantity` checkout doğrulamasında da (cart'ta olduğu gibi) hiçbir şekilde azaltılmaz, `InventoryMovement` oluşturulmaz — bu, `scripts/faz4b-checkout-e2e-check.ts`'te doğrudan doğrulandı.
+
+### Server-side pricing (client manipülasyonu savunması)
+
+`checkoutValidateSchema` (`src/lib/customer-validation.ts`) yalnızca `addressId` ve `deliveryMethod` alanlarını tanımlar — `price`/`subtotal`/`total`/`shippingPrice`/`quantity` gibi hiçbir alan şemada YOK. zod'un varsayılan davranışı (strip) gereği istemci bunları gönderse bile route bunları **hiçbir zaman okuyamaz**; sunucu `subtotal`/`shipping`/`total`'ı HER ZAMAN kendi `computeFinalPrice()`+`computeCheckoutTotals()` zincirinden hesaplar. `scripts/faz4b-checkout-e2e-check.ts`, gerçek bir HTTP isteğinde bu alanları manipüle ederek (`price:1, total:1, shippingPrice:999999` vb.) sunucunun bunları görmezden geldiğini ve gerçek değerleri döndürdüğünü doğruladı.
+
+### Guest → customer checkout transition (Bölüm 3/21)
+
+Checkout **yalnızca authenticated customer** için çalışır (`requireCustomer()` — FAZ4A'dan aynen yeniden kullanıldı). Guest bir kullanıcı `/checkout`'a geldiğinde: sepeti/guest cookie'si **dokunulmadan** kalır, UI "Giriş Yap"/"Üye Ol" seçenekleri gösterir (`src/components/CheckoutPage.tsx`). Login/register sonrası istemci **FAZ4A'daki** `POST /api/cart/merge` ucunu çağırır — checkout için YENİ bir merge mekanizması YAZILMADI.
+
+### AI Garden Designer future integration (Bölüm 20)
+
+Cart API (`POST /api/cart/items`) zaten yalnızca `productId`/`quantity` kabul eden, ürünleri Product/SKU temelinde ekleyen bir REST ucu — "yalnızca UI'dan eklenebilir" şeklinde bir kısıtlama YOK, ileride kimliği doğrulanmış bir server-to-server çağrı (ör. bir AI Garden Designer'ın önerdiği ürün listesini sepete aktarması) aynı ucu, aynı stok/aktiflik kontrolleriyle kullanabilir. Checkout ucu da aynı ilkeyle: `Cart`'ı TEK kaynak olarak okur, ürünlerin sepete NASIL girdiğiyle ilgilenmez. **Bu fazda hiçbir AI API'si veya öneri motoru eklenmedi** — bu bölüm yalnızca mimari uyumluluk notudur (FAZ3.1'deki "AI Garden Designer uyumluluğu" notuyla aynı ilke).
+
+### Order/Payment/Shipping boundary (kesin sınır — FAZ4B'de de değişmedi)
+
+Bu fazda **kesinlikle eklenmeyenler**: `Order`/`OrderItem`/`OrderAddressSnapshot` modeli, `Payment`/`PaymentTransaction` modeli, `Shipping`/`InventoryReservation` modeli, `Invoice` modeli, ödeme sağlayıcı entegrasyonu (iyzico/PayTR/Stripe/Shopier/PayPal/banka API), gerçek kargo API entegrasyonu (Aras/Yurtiçi/MNG/PTT/Sürat/HepsiJET). `/checkout` sayfasındaki "Ödemeye Geç" butonu **hiçbir gerçek ödeme başlatmaz** — tıklandığında yalnızca "ödeme adımı yakında aktif olacak" placeholder mesajı gösterir, asla "ödeme başarılı" gibi yanıltıcı bir metin YAZDIRMAZ. Sitedeki tek gerçek sipariş yolu hâlâ **WhatsApp'tır**.
