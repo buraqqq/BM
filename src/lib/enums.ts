@@ -99,6 +99,12 @@ export const INVENTORY_MOVEMENT_TYPE_LABELS: Record<InventoryMovementType, strin
   OTHER: "Diğer",
 };
 
+// FAZ 3 — Bölüm 8: ticari altyapı hazırlığı (yalnızca şema, bkz.
+// prisma/schema.prisma Cart modeli yorumu ve docs/commerce.md). Hiçbir kod
+// şu an bu değerleri okumuyor/yazmıyor.
+export const CART_STATUSES = ["ACTIVE", "CONVERTED", "ABANDONED"] as const;
+export type CartStatus = (typeof CART_STATUSES)[number];
+
 export const CAMPAIGN_DISCOUNT_TYPES = ["PERCENTAGE", "FIXED_AMOUNT"] as const;
 export type CampaignDiscountType = (typeof CAMPAIGN_DISCOUNT_TYPES)[number];
 

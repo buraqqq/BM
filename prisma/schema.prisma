@@ -65,6 +65,7 @@ model User {
   updatedAt    DateTime @updatedAt
 
   addresses Address[]
+  carts     Cart[]
 
   @@map("users")
 }
@@ -84,6 +85,64 @@ model Address {
   createdAt  DateTime @default(now())
 
   @@map("addresses")
+}
+
+// ----------------------------------------------------------
+// FAZ 3 — Bölüm 8: Ticari altyapı hazırlığı (yalnızca şema)
+//
+// Hedeflenen ileriki akış:
+//   Ürün → Sepete Ekle → Cart → Customer → Address → Gel-Al/Kargo → Payment
+//
+// Bu FAZ'da ödeme/sipariş İŞLEME alınmıyor — yalnızca akışın "Ürün → Sepete
+// Ekle → Cart" kısmına kadarki veri modeli, gelecekteki çalışan bir sepet/
+// checkout özelliğinin üzerine doğrudan inşa edilebilmesi için baştan
+// hazırlanıyor. Customer/Address adımları zaten FAZ 1'den beri var olan
+// User/Address modelleriyle karşılanıyor (bkz. yukarısı) — burada yeniden
+// tanımlanmadı. "Gel-Al/Kargo" ve "Payment" adımları için HENÜZ hiçbir
+// model eklenmedi (bkz. docs/commerce.md — bu adımların şeması FAZ 4+'a
+// bırakıldı, çünkü teslimat/ödeme yöntemi seçimi henüz netleşmedi ve
+// şimdiden model eklemek tahmin/uydurma olurdu).
+//
+// Cart, hem giriş yapmış (userId dolu) hem de misafir (sessionToken ile,
+// userId null) kullanıcıyı destekleyecek şekilde tasarlandı — bu, mevcut
+// public sitenin (FAZ 1'den beri) hiçbir müşteri girişi ZORUNLU KILMAMASI
+// ilkesiyle tutarlı. Şu an hiçbir API rotası veya UI bu modelleri
+// okumuyor/yazmıyor — sepete ekle butonu FAZ 3'te de yalnızca WhatsApp
+// siparişine yönlendiriyor (bkz. docs/commerce.md).
+// ----------------------------------------------------------
+
+model Cart {
+  id           String   @id @default(cuid())
+  userId       String?
+  user         User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessionToken String?  @unique // misafir sepeti için (userId null olduğunda zorunlu)
+  status       String   @default("ACTIVE") // ACTIVE | CONVERTED | ABANDONED (bkz. src/lib/enums.ts)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  items CartItem[]
+
+  @@index([userId])
+  @@map("carts")
+}
+
+model CartItem {
+  id        String   @id @default(cuid())
+  cartId    String
+  cart      Cart     @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  quantity  Int      @default(1)
+  // Ekleme anındaki birim fiyat — sepette gösterilecek fiyatın, üründe
+  // sonradan yapılan bir fiyat değişikliğiyle sessizce değişmemesi için
+  // (gerçek bir sepet UI'ı eklendiğinde "fiyat değişti" uyarısı bu alanla
+  // karşılaştırılarak verilebilir). Şimdilik hiçbir kod bu alanı okumuyor.
+  unitPriceAtAdd Decimal
+  createdAt      DateTime @default(now())
+
+  @@unique([cartId, productId])
+  @@index([cartId])
+  @@map("cart_items")
 }
 
 // ----------------------------------------------------------
@@ -229,6 +288,7 @@ model Product {
   campaignProducts CampaignProduct[]
   banners          Banner[]
   attributeValues  ProductAttributeValue[]
+  cartItems        CartItem[]
 
   @@index([categoryId])
   @@index([isActive])
