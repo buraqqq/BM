@@ -232,6 +232,14 @@ model Product {
 
   @@index([categoryId])
   @@index([isActive])
+  @@index([brandId])
+  // "name" üzerindeki bu index yalnızca sıralama (ORDER BY name) ve tam/
+  // önek eşleşmeleri için işe yarar — admin aramasının kullandığı
+  // `contains` (alt-dize) sorgusu SQLite'ta bu türden bir B-tree index'i
+  // KULLANAMAZ. 10.000+ ürün ölçeğinde gerçek "içeren" arama performansı
+  // için SQLite FTS5 sanal tablosuna geçiş gerekecektir (bkz. docs/catalog.md
+  // performans notu) — bu FAZ2 kapsamında yapılmadı, bilinen bir sınırdır.
+  @@index([name])
   @@map("products")
 }
 

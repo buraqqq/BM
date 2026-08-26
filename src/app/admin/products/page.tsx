@@ -62,6 +62,12 @@ export default function AdminProductsPage() {
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState<string | null>(null);
 
+  // Bölüm 35/37 — server-side pagination (10.000+ ürün hedefinde admin
+  // listesi ASLA "tümünü getir" yapmaz). Filtre değişince sayfa 1'e döner.
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
+  const [totalPages, setTotalPages] = useState(1);
+
   // Bölüm 22 — toplu işlem paneli
   const [bulkAction, setBulkAction] = useState<BulkAction>("ACTIVATE");
   const [bulkTargetCategoryId, setBulkTargetCategoryId] = useState("");
@@ -76,13 +82,21 @@ export default function AdminProductsPage() {
     if (categoryId) params.set("categoryId", categoryId);
     if (active) params.set("active", active);
     if (stock) params.set("stock", stock);
-    params.set("pageSize", "100");
+    params.set("page", String(page));
+    params.set("pageSize", String(pageSize));
     const res = await fetch(`/api/admin/products?${params.toString()}`);
     const data = await res.json();
     setItems(data.items ?? []);
     setTotal(data.total ?? 0);
+    setTotalPages(data.totalPages ?? 1);
     setLoading(false);
-  }, [search, categoryId, active, stock]);
+  }, [search, categoryId, active, stock, page, pageSize]);
+
+  // Filtre veya sayfa boyutu değişince 1. sayfaya dön (aksi halde ör. 50
+  // sonuçlu bir aramadan sonra hâlâ sayfa 5'te kalıp boş liste görünebilir).
+  useEffect(() => {
+    setPage(1);
+  }, [search, categoryId, active, stock, pageSize]);
 
   useEffect(() => {
     fetch("/api/admin/categories")
@@ -186,10 +200,29 @@ export default function AdminProductsPage() {
             <option value="low">Az stok</option>
             <option value="out">Tükendi</option>
           </select>
+          <select value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))}>
+            <option value={20}>20 / sayfa</option>
+            <option value={50}>50 / sayfa</option>
+            <option value={100}>100 / sayfa</option>
+          </select>
           <a href="/admin/products/new" className="admin-btn">
             + Yeni Ürün
           </a>
         </div>
+
+        {totalPages > 1 && (
+          <div className="filters-row" style={{ justifyContent: "flex-end" }}>
+            <button className="admin-btn secondary" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
+              ← Önceki
+            </button>
+            <span style={{ fontSize: "0.85rem" }}>
+              Sayfa {page} / {totalPages}
+            </span>
+            <button className="admin-btn secondary" disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>
+              Sonraki →
+            </button>
+          </div>
+        )}
 
         {selected.size > 0 && (
           <div className="count-mode-box" style={{ marginBottom: 16 }}>
@@ -295,6 +328,20 @@ export default function AdminProductsPage() {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {totalPages > 1 && (
+          <div className="filters-row" style={{ justifyContent: "flex-end", marginTop: 12 }}>
+            <button className="admin-btn secondary" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
+              ← Önceki
+            </button>
+            <span style={{ fontSize: "0.85rem" }}>
+              Sayfa {page} / {totalPages} ({total} ürün)
+            </span>
+            <button className="admin-btn secondary" disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>
+              Sonraki →
+            </button>
           </div>
         )}
       </div>
