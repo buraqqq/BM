@@ -33,6 +33,11 @@ export function serializePublicProduct(product: ProductWithRelations, activeCamp
     },
     inStock: (product.inventory?.stockStatus ?? "IN_STOCK") !== "OUT_OF_STOCK",
     isFeatured: product.isFeatured,
+    // Bölüm 30 — /urun/:slug sayfasının generateMetadata'sı için: admin'in
+    // ürün SEO sekmesinde girdiği başlık/açıklama, boşsa ürün adı/kısa
+    // açıklamaya düşer (bkz. src/app/urun/[slug]/page.tsx).
+    seoTitle: product.seoTitle,
+    seoDescription: product.seoDescription,
   };
 }
 
