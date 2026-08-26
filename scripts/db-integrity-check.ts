@@ -80,6 +80,41 @@ async function main() {
   const allCategories = await prisma.category.findMany({ select: { slug: true } });
   findDuplicates(allCategories, "slug").forEach((d) => findings.push(`duplicate Category slug: ${d}`));
 
+  // ---------------------------------------------------------------
+  // FAZ 4A — Bölüm 28/35: User/Address/Cart/CartItem bütünlüğü.
+  // ---------------------------------------------------------------
+  const userIds = new Set((await prisma.user.findMany({ select: { id: true } })).map((u) => u.id));
+  const cartIds = new Set((await prisma.cart.findMany({ select: { id: true } })).map((c) => c.id));
+
+  const addresses = await prisma.address.findMany({ select: { id: true, userId: true, isDefault: true } });
+  findMissingRefs(addresses, "userId", userIds, "id").forEach((f) => findings.push(`orphan Address: ${f}`));
+
+  const carts = await prisma.cart.findMany({ select: { id: true, userId: true } });
+  findMissingRefs(
+    carts.filter((c) => c.userId !== null),
+    "userId",
+    userIds,
+    "id"
+  ).forEach((f) => findings.push(`orphan Cart: ${f}`));
+
+  const cartItems = await prisma.cartItem.findMany({ select: { id: true, cartId: true, productId: true } });
+  findMissingRefs(cartItems, "cartId", cartIds, "id").forEach((f) => findings.push(`orphan CartItem (cartId): ${f}`));
+  findMissingRefs(cartItems, "productId", productIds, "id").forEach((f) => findings.push(`orphan CartItem (productId): ${f}`));
+
+  const allUsers = await prisma.user.findMany({ select: { email: true } });
+  findDuplicates(allUsers, "email").forEach((d) => findings.push(`duplicate User email: ${d}`));
+
+  // Bölüm 7 — "aynı anda yalnızca bir isDefault=true adres" invariant'ı
+  // (address-rules.ts ile server-side garanti edilir) burada BAĞIMSIZ olarak
+  // tüm gerçek veri üzerinde yeniden doğrulanır.
+  const defaultCountByUser = new Map<string, number>();
+  for (const a of addresses) {
+    if (a.isDefault) defaultCountByUser.set(a.userId, (defaultCountByUser.get(a.userId) ?? 0) + 1);
+  }
+  for (const [userId, count] of defaultCountByUser) {
+    if (count > 1) findings.push(`user ${userId}: ${count} default addresses (expected <= 1)`);
+  }
+
   // --- Özet ---
   const counts = {
     products: await prisma.product.count(),
@@ -91,6 +126,10 @@ async function main() {
     priceHistory: await prisma.priceHistory.count(),
     campaignProducts: await prisma.campaignProduct.count(),
     productImages: await prisma.productImage.count(),
+    users: await prisma.user.count(),
+    addresses: await prisma.address.count(),
+    carts: await prisma.cart.count(),
+    cartItems: await prisma.cartItem.count(),
   };
 
   console.log("=== DB Integrity Check ===");
