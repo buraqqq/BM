@@ -18,8 +18,8 @@ Prisma + SQLite kombinasyonu native `enum` tipini desteklemiyor (migration sıra
 | ADMIN USER / ROLE | `AdminUser` (role: String) | bcrypt hash, rol DB'de |
 | PRODUCT | `Product` | Bkz. aşağıdaki alan tablosu |
 | CATEGORY | `Category` | 7 kayıt, migrasyonla dolduruldu |
-| SUBCATEGORY | `SubCategory` | Şema hazır, migrasyon kaynağında (products.js) alt kategori verisi yoktu, boş |
-| PRODUCT IMAGE | `ProductImage` | Şema hazır, henüz hiçbir üründe görsel yok (legacy sitede de yoktu) |
+| SUBCATEGORY | `SubCategory` (FAZ1) + `Category.parentId`/`path`/`depth` (FAZ2) | FAZ 2'de `Category` kendi kendine referans veren gerçek bir ağaca dönüştü (materialized path — bkz. `catalog.md`); eski `SubCategory` tablosu geriye dönük uyumluluk için şemada duruyor ama yeni admin akışı kategori hiyerarşisini `Category.parentId` ile kuruyor. Gerçek veride hâlâ hiç alt kategori yok (FAZ 2 mimariyi hazırladı, veriyi otomatik doldurmadı) |
+| PRODUCT IMAGE | `ProductImage` | FAZ 2'de admin panelinden yükleme/sıralama/ana-mobil ana görsel/alt metin ile aktif kullanımda (bkz. `product-management.md`); `isMobilePrimary` alanı FAZ 2'de eklendi |
 | PRODUCT VARIANT | `ProductVariant` | Şema hazır, henüz kullanılmıyor |
 | INVENTORY | `Inventory` + `InventoryMovement` | Her ürün için migrasyonla oluşturuldu (bkz. migration.md — varsayılan miktar notu) |
 | PRICE | `PriceHistory` | Her fiyat değişikliğinde otomatik kayıt |
@@ -41,7 +41,7 @@ Prisma + SQLite kombinasyonu native `enum` tipini desteklemiyor (migration sıra
 | slug | String, unique | ✅ (Türkçe karakter dönüşümlü otomatik üretim, bkz. `src/lib/slug.ts`) |
 | category | → Category | ✅ FK |
 | subcategory | → SubCategory? | ✅ FK, opsiyonel |
-| brand | → Brand? | ✅ FK, opsiyonel (henüz hiçbir ürüne marka atanmadı) |
+| brand | → Brand? | ✅ FK, opsiyonel — FAZ 2'de `/admin/brands` CRUD ekranı ve ürün formunda marka seçimi eklendi |
 | shortDescription / description | String? | ✅ |
 | images | → ProductImage[] | ✅ ayrı tablo |
 | price | Decimal | ✅ |
@@ -79,3 +79,19 @@ Prisma + SQLite kombinasyonu native `enum` tipini desteklemiyor (migration sıra
 ## Migration sistemi (Bölüm 23)
 
 Prisma Migrate kullanılıyor (`npx prisma migrate dev` / `deploy`). Migration dosyaları `prisma/migrations/` altında, version-controlled (git'e dahil). İlk migration: `20260826081957_init`. Production'a her yeni şema değişikliği `prisma migrate deploy` ile, elle SQL çalıştırılmadan uygulanmalıdır.
+
+## FAZ 2 şema değişiklikleri
+
+FAZ 2 boyunca eklenen tüm alanlar **additive**'dir (mevcut hiçbir kolon kaldırılmadı/tipi değiştirilmedi, geriye dönük uyumluluk korundu):
+
+| Migration | Değişiklik |
+|---|---|
+| `20260826090944_faz2_catalog_schema` | Tek büyük FAZ 2 temel migration'ı: `Category.parentId`/`path`/`depth` (materialized path, bkz. `catalog.md`), `ProductAttributeDefinition`/`ProductAttributeValue` (Bölüm 10 — dinamik özellikler), `ImportJob` tablosu (Bölüm 23/38) ve ilişkili FAZ 2 katalog alanları |
+| `20260826100427_product_image_mobile_primary` | `ProductImage.isMobilePrimary Boolean @default(false)` |
+| `20260826100844_product_search_indexes` | `@@index([brandId])`, `@@index([name])` — Bölüm 35/36/37 (10.000+ ürün ölçeği için) |
+
+### İndeksler ve arama (Bölüm 35/36)
+
+`Product` üzerinde: `categoryId`, `brandId`, `isActive`, `name` indeksli. **Önemli kısıtlama**: SQLite'ta standart bir B-tree index, `LIKE '%terim%'` (baştan joker karakterli) alt dize aramasını hızlandırmaz — yalnızca `ORDER BY name` ve `LIKE 'terim%'` (baştan sabit) sorgularını hızlandırır. Şu anki 257 ürünlük ölçekte admin arama ekranındaki `contains` sorgusu sorun yaratmıyor; katalog birkaç bin ürüne ulaştığında bu, SQLite FTS5 (full-text search) sanal tablosuna geçiş gerektirecektir — kod içinde bu nokta işaretlenmiştir (`src/app/api/admin/products/route.ts`), FAZ 2 kapsamında henüz uygulanmadı.
+
+Admin ürün listesi ve tüm toplu işlem/export uçları **server-side pagination** kullanır (`page`/`pageSize`, API'de `pageSize` üst sınırı 200) — hiçbir uç tüm ürünleri tek seferde belleğe çekmez.

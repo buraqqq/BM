@@ -42,6 +42,21 @@ Bu testler `scripts/verify-e2e.sh` ve elle çalıştırılan ek komutlarla doğr
 
 `npm audit`, Next.js 14.2.x'in dahili build araçlarının kullandığı **PostCSS**'te (transitive, yalnızca `next build` sırasında çalışan bir dev-time bağımlılık) bilinen CVE'ler rapor ediyor (XSS in CSS stringify, sourceMappingURL üzerinden dosya okuma). Düzeltme Next.js'i major sürüm 16'ya yükseltmeyi gerektiriyor (breaking change). Bu FAZ 1 kapsamında **bilinçli olarak ertelendi** çünkü: (1) risk yalnızca *build zamanında*, güvenilmeyen CSS işlenmiyor; (2) production runtime'da bu paket çalışmıyor, son kullanıcıya sunulan koda dahil değil. **FAZ 2'de** Next.js 15/16'ya kontrollü bir yükseltme önerilir. `next-auth` ve `uuid`'deki benzer bulgular bu faz içinde **düzeltildi** (bkz. commit geçmişi).
 
+## FAZ 2 — audit log ve rol matrisi gözden geçirmesi (Bölüm 33/34/40)
+
+FAZ 2'de eklenen tüm `/api/admin/*` uçları tek tek gözden geçirildi (`requireAdmin` minimum rolü + `writeAuditLog` varlığı). İki gerçek boşluk bulunup düzeltildi:
+
+- Ürün görseli `PATCH` (ana görsel/mobil ana görsel değişimi) hiç audit loglamıyordu — artık müşteriye görünen içerik değiştiğinde (`isPrimary`/`isMobilePrimary`) `PRODUCT_UPDATE` olarak loglanıyor; kozmetik alanlar (sıralama/alt metin) log gürültüsü olmasın diye loglanmıyor.
+- CSV export ucu (`/api/admin/products/export`) "Maliyet Fiyatı" (kâr marjı) sütunu içerdiği halde varsayılan `requireAdmin()` (STAFF+) ile korunuyordu — artık `ADMIN+`'a kısıtlı. Not: ürün detay ekranı (`GET /api/admin/products/:id`) STAFF'a hâlâ `costPrice` gösteriyor (FAZ 1'den beri dokümante edilmiş, "STAFF ürün okuyabilir" kuralının bir parçası) — export'un ayrıca kısıtlanmasının nedeni, tek bir dosyada **tüm** kataloğun marj verisinin toplu olarak dışarı çıkabilmesi; bu, tek tek ürün görüntülemekten niteliksel olarak farklı bir risk.
+
+Sert silme (`DELETE`) uçları (ürün/kategori/marka/özellik tanımı) kasıtlı olarak her zaman `405 HARD_DELETE_DISABLED` döndüğü için audit log gerektirmiyor — hiçbir veri değişmiyor.
+
+Yeni stok/fiyat/kampanya/import-export uçlarının audit log kapsamı: `PRODUCT_BULK_ACTION`, `BULK_PRICE_UPDATE`, `INVENTORY_UPDATE`, `INVENTORY_COUNT`, `CAMPAIGN_PRODUCT_ASSIGN`, `PRODUCT_IMPORT`, `PRODUCT_EXPORT` — tümü `src/lib/enums.ts`'teki `AUDIT_ACTIONS` listesinde ve ilgili route'larda doğrulandı.
+
+## FAZ 2 — E2E sırasında bulunan bir doğruluk hatası (fonksiyonel, güvenlik değil)
+
+20 adımlık E2E senaryosunun 4. adımında (bkz. tamamlanma raporu Bölüm O) bulunan bir hata düzeltildi: yeni ürün oluşturma ucu, `Inventory.stockStatus`'u başlangıç miktarına göre hiç hesaplamıyordu (şema varsayılanı olan `"IN_STOCK"`'ta kalıyordu) — 0 veya düşük stokla oluşturulan bir ürün yanlışlıkla "stokta var" görünüyor, düşük stok/tükendi dashboard'unda hiç çıkmıyordu. Bu bir yetkilendirme açığı değil ama Bölüm 21'in "düşük stok/tükenen ürün dashboard'u" gereksinimini zayıflatan gerçek bir hataydı; `deriveStockStatus()` ortak fonksiyonuna taşınarak düzeltildi (bkz. `inventory.md`).
+
 ## Yapılmadı / FAZ 2+ önerisi
 
 - CSP (Content-Security-Policy) header'ı henüz eklenmedi (yalnızca X-Frame-Options vb. eklendi) — Font Awesome/Google Fonts gibi harici kaynaklar kullanıldığı için dikkatli bir CSP politikası gerektirir, ayrı bir iterasyon önerilir.
