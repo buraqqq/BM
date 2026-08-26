@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireCustomer } from "@/lib/require-customer";
 import { addressUpdateSchema } from "@/lib/customer-validation";
 import { idsToUnsetDefault, pickPromotedDefaultId } from "@/lib/address-rules";
+import { findOwnedAddress } from "@/lib/address-ownership";
 
 export const dynamic = "force-dynamic";
 
@@ -10,18 +11,14 @@ export const dynamic = "force-dynamic";
 // FAZ 4A — Bölüm 8: "Kullanıcı sadece KENDİ adreslerine erişebilmeli...
 // IDOR / authorization testleri ekle."
 //
-// Savunma deseni: adres önce id'ye göre bulunur, SONRA `userId ===
-// session.user.id` kontrol edilir; eşleşmezse — adres hiç yoksa da,
-// BAŞKASINA aitse de — AYNI 404 NOT_FOUND döner (403 değil). Bu bilinçli
-// bir seçim: "bu id var ama sana ait değil" ile "bu id hiç yok" arasındaki
-// farkı dışarı sızdırmamak, ID enumeration/IDOR saldırılarını bir adım daha
-// zorlaştırır (bkz. docs/security.md).
+// Savunma deseni (bkz. src/lib/address-ownership.ts — FAZ 4B'de checkout
+// route'uyla PAYLAŞILAN, tek bir yere taşındı): adres önce id'ye göre
+// bulunur, SONRA `userId === session.user.id` kontrol edilir; eşleşmezse —
+// adres hiç yoksa da, BAŞKASINA aitse de — AYNI 404 NOT_FOUND döner (403
+// değil). Bu bilinçli bir seçim: "bu id var ama sana ait değil" ile "bu id
+// hiç yok" arasındaki farkı dışarı sızdırmamak, ID enumeration/IDOR
+// saldırılarını bir adım daha zorlaştırır (bkz. docs/security.md).
 // ==========================================================
-async function findOwnedAddress(id: string, userId: string) {
-  const address = await prisma.address.findUnique({ where: { id } });
-  if (!address || address.userId !== userId) return null;
-  return address;
-}
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   const auth = await requireCustomer();

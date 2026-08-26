@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { DELIVERY_METHODS } from "@/lib/enums";
 
 // ==========================================================
 // FAZ 4A — Bölüm 30: "Tüm mutation endpointleri server-side Zod validation
@@ -74,3 +75,28 @@ export const cartAddItemSchema = z.object({
 export const cartUpdateItemSchema = z.object({
   quantity: z.coerce.number().int().min(1).max(9999),
 });
+
+// ==========================================================
+// FAZ 4B — Bölüm 15/25/30: POST /api/checkout/validate gövdesi.
+//
+// BİLEREK yalnızca `addressId` ve `deliveryMethod` kabul edilir.
+// price/subtotal/total/shippingPrice/quantity gibi hiçbir alan burada
+// TANIMLI DEĞİL — zod varsayılan davranışı gereği (strict() kullanılmadı)
+// şemada olmayan alanlar sessizce ELENIR, istemci onları gönderse bile
+// route bunları hiçbir zaman OKUYAMAZ (Bölüm 14 — "Client state source of
+// truth değildir"). `deliveryMethod`, enums.ts'teki TEK kaynaktan
+// (DELIVERY_METHODS) türetildiği için "HACK" gibi keyfi bir değer zod
+// tarafından doğrudan reddedilir (Bölüm 18).
+// ==========================================================
+export const checkoutValidateSchema = z
+  .object({
+    addressId: z.string().min(1).optional().nullable(),
+    deliveryMethod: z.enum(DELIVERY_METHODS),
+  })
+  .superRefine((data, ctx) => {
+    // Bölüm 4/8: Kargo ile teslimatta adres ZORUNLU; Gel-Al'da değil
+    // (mağazadan teslim alınıyor, kargo adresi anlamsız).
+    if (data.deliveryMethod === "DELIVERY" && !data.addressId) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Kargo ile teslimat için bir teslimat adresi seçmelisiniz.", path: ["addressId"] });
+    }
+  });

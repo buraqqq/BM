@@ -105,6 +105,18 @@ export const INVENTORY_MOVEMENT_TYPE_LABELS: Record<InventoryMovementType, strin
 export const CART_STATUSES = ["ACTIVE", "CONVERTED", "ABANDONED"] as const;
 export type CartStatus = (typeof CART_STATUSES)[number];
 
+// FAZ 4B — Bölüm 6: teslimat yöntemi. Şimdilik iki değer (Gel-Al/Kargo) ama
+// gelecekte genişletilebilir olacak şekilde (ör. EXPRESS_DELIVERY) ayrı bir
+// liste olarak tutuluyor — henüz hiçbir Prisma modeline (Order yok) gömülü
+// değil, yalnızca checkout API/UI bu listeyi referans alıyor.
+export const DELIVERY_METHODS = ["PICKUP", "DELIVERY"] as const;
+export type DeliveryMethod = (typeof DELIVERY_METHODS)[number];
+
+export const DELIVERY_METHOD_LABELS: Record<DeliveryMethod, string> = {
+  PICKUP: "Mağazadan Gel-Al",
+  DELIVERY: "Kargo ile Teslimat",
+};
+
 export const CAMPAIGN_DISCOUNT_TYPES = ["PERCENTAGE", "FIXED_AMOUNT"] as const;
 export type CampaignDiscountType = (typeof CAMPAIGN_DISCOUNT_TYPES)[number];
 
