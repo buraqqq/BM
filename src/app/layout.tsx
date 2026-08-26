@@ -2,13 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { getSiteUrl } from "@/lib/seo";
 import { SessionProviderClient } from "@/components/SessionProviderClient";
+import { PwaInstaller } from "@/components/PwaInstaller";
 
-// FAZ 3 — Bölüm 7: metadataBase, alt sayfaların generateMetadata()'sında
-// döndürdüğü göreli Open Graph görsel URL'lerinin (ör. ürün görseli göreli
-// bir path olsaydı) doğru mutlak URL'e çözülmesi için gerekli. Şu an her
-// sayfa zaten absoluteUrl() ile mutlak URL üretiyor (bkz. src/lib/seo.ts)
-// ama metadataBase'in eksik olması Next.js'in build sırasında uyarı
-// vermesine neden oluyordu — bu düzeltildi.
 export const metadata: Metadata = {
   metadataBase: new URL(getSiteUrl()),
   title: {
@@ -34,15 +29,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           rel="stylesheet"
         />
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+        {/* FAZ 5 — PWA */}
+        <link rel="manifest" href="/manifest.json" />
+        <meta name="theme-color" content="#E65100" />
+        <link rel="apple-touch-icon" href="/icons/icon.svg" />
       </head>
       <body>
-        {/* FAZ 4A — Bölüm 1: NextAuth session context artık ROOT layout'ta
-            (yalnızca /admin altında değil) — hem admin panel hem
-            /giris,/kayit,/hesabim,/sepet,/hesabim/adresler ve header'daki
-            CartBadge/hesap linki `useSession()` ile aynı, tek session
-            kaynağını okuyor. src/app/admin/layout.tsx'teki AYRI
-            SessionProviderClient kaldırıldı (iki iç içe provider gereksizdi). */}
         <SessionProviderClient>{children}</SessionProviderClient>
+        <PwaInstaller />
       </body>
     </html>
   );

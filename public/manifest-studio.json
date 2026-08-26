@@ -1,0 +1,21 @@
+{
+  "name": "B&M Vourla — AI Bahçe Stüdyosu",
+  "short_name": "AI Studio",
+  "description": "Yapay zeka bahçe tasarımcısı: fotoğraf/ses/yazı ile bölgeleme, ihtiyaç listesi ve ürün önerisi.",
+  "id": "/bahce-tasarimi",
+  "start_url": "/bahce-tasarimi",
+  "scope": "/bahce-tasarimi",
+  "display": "fullscreen",
+  "orientation": "any",
+  "background_color": "#14100d",
+  "theme_color": "#3f7d3a",
+  "lang": "tr",
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "name": "B&M Vourla – Bahçe & Mangal",
+  "short_name": "B&M Vourla",
+  "description": "Urla/İzmir'de mangal, bahçe dekorasyonu, aydınlatma, ısıtma, soğutma ve niş ürünler. AI Bahçe Tasarımı ile alanınızı planlayın.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#14100d",
+  "theme_color": "#E65100",
+  "lang": "tr",
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}
