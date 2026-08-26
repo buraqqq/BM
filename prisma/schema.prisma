@@ -53,12 +53,17 @@ model LoginAttempt {
   @@map("login_attempts")
 }
 
-// Gelecekteki müşteri hesapları (Market PWA / e-ticaret) için temel — FAZ 1'de
-// hiçbir müşteri-facing özellik bu modele bağlı değildir.
+// FAZ 1'de temel olarak eklenmişti, hiçbir müşteri-facing özellik bu modele
+// bağlı değildi. FAZ 4A — Bölüm 1/2: gerçek müşteri hesabı/kayıt/giriş bu
+// modelin üzerine inşa edildi (bkz. src/lib/auth.ts customer-credentials
+// provider). `surname` alanı FAZ4A Bölüm 2 (name+surname ayrı alan) için
+// eklendi — mevcut `name` alanı (opsiyonel, legacy) korunuyor, yeni kayıtlar
+// hem name hem surname'i dolduruyor.
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
   name         String?
+  surname      String?
   phone        String?
   passwordHash String?
   createdAt    DateTime @default(now())
@@ -70,20 +75,31 @@ model User {
   @@map("users")
 }
 
+// FAZ 4A — Bölüm 6: FAZ1'den beri şemada duran ama hiç kullanılmayan (0 satır)
+// Address modeli, bu fazda gerçekten kullanılmaya başlandığı için Türkiye
+// adres yapısına uygun alanlarla YENİDEN TANIMLANDI (rename değil — hiçbir
+// gerçek veri taşımadığı doğrulandıktan sonra, bkz. FAZ4A raporu). Sistem
+// yalnızca İzmir'e kilitlenmedi: `city`/`district` serbest metin, `country`
+// varsayılan "Türkiye" ama değiştirilebilir.
 model Address {
-  id         String   @id @default(cuid())
-  userId     String
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  label      String
-  line1      String
-  line2      String?
-  city       String
-  district   String?
-  postalCode String?
-  phone      String?
-  isDefault  Boolean  @default(false)
-  createdAt  DateTime @default(now())
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title        String // "Ev", "İş" vb. — kullanıcının kendi adres etiketi
+  firstName    String
+  lastName     String
+  phone        String
+  city         String // il
+  district     String // ilçe
+  neighborhood String? // mahalle
+  addressLine  String // açık adres (sokak, no, kapı vb.)
+  postalCode   String?
+  country      String   @default("Türkiye")
+  isDefault    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
+  @@index([userId])
   @@map("addresses")
 }
 
@@ -142,6 +158,9 @@ model CartItem {
 
   @@unique([cartId, productId])
   @@index([cartId])
+  // FAZ 4A — Bölüm 28: productId üzerinde de index — "bu ürün kaç sepette
+  // var" gibi gelecekteki admin sorguları ve CASCADE silme performansı için.
+  @@index([productId])
   @@map("cart_items")
 }
 

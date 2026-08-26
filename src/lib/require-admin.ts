@@ -19,7 +19,14 @@ export async function requireAdmin(minRole: AdminRole[] = ["STAFF", "ADMIN", "SU
     };
   }
 
-  if (!minRole.includes(session.user.role)) {
+  // FAZ 4A — Bölüm 1: NextAuth artık iki tür oturum taşıyor (admin/customer,
+  // bkz. src/lib/auth.ts). Bir müşteri oturumuyla admin uca erişim denemesi
+  // burada AÇIKÇA reddedilir — `session.user.role` customer için zaten
+  // undefined olduğundan aşağıdaki `minRole.includes` kontrolü tek başına da
+  // güvenli (fail-closed) davranırdı, ama kind kontrolü niyeti daha net
+  // ifade eder ve gelecekte role listesine yanlışlıkla "undefined" eklenmesi
+  // gibi bir hataya karşı ekstra savunma sağlar.
+  if (session.user.kind !== "admin" || !session.user.role || !minRole.includes(session.user.role)) {
     return {
       ok: false as const,
       response: NextResponse.json({ error: "FORBIDDEN", message: "Bu işlem için yetkiniz yok." }, { status: 403 }),

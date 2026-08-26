@@ -1,13 +1,13 @@
-import { SessionProviderClient } from "@/components/SessionProviderClient";
 import { AdminNav } from "@/components/AdminNav";
 
+// FAZ 4A: SessionProvider artık kök layout'ta (bkz. src/app/layout.tsx) —
+// burada kaldırıldı, useSession() hâlâ AYNI şekilde çalışıyor (context
+// yukarıdan geliyor).
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
-    <SessionProviderClient>
-      <div className="admin-body">
-        <AdminNav />
-        {children}
-      </div>
-    </SessionProviderClient>
+    <div className="admin-body">
+      <AdminNav />
+      {children}
+    </div>
   );
 }
