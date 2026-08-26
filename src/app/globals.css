@@ -157,6 +157,7 @@ a { text-decoration: none; color: inherit; }
 .count-diff-pos { color: #2E7D32; font-weight: 700; }
 .count-diff-neg { color: #c0392b; font-weight: 700; }
 .count-diff-zero { color: var(--gray-600); font-weight: 700; }
+.check-result-row:hover { background: #FFF8E1; }
 .form-row { margin-bottom: 14px; display: flex; flex-direction: column; gap: 4px; }
 .form-row label { font-size: 0.8rem; font-weight: 600; color: var(--gray-800); }
 .form-row input, .form-row select, .form-row textarea {
