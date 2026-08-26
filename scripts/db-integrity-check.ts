@@ -115,6 +115,38 @@ async function main() {
     if (count > 1) findings.push(`user ${userId}: ${count} default addresses (expected <= 1)`);
   }
 
+  // ---------------------------------------------------------------
+  // FAZ 4C â€” Order / OrderItem / OrderAddressSnapshot / OrderStatusHistory
+  // integrity + negative inventory + duplicate order number + converted-cart
+  // consistency.
+  // ---------------------------------------------------------------
+  const orderIds = new Set((await prisma.order.findMany({ select: { id: true } })).map((o) => o.id));
+  findDuplicates(await prisma.order.findMany({ select: { orderNumber: true } }), "orderNumber").forEach((d) => findings.push(`duplicate order number: ${d}`));
+
+  const orderItems = await prisma.orderItem.findMany({ select: { id: true, orderId: true, productId: true } });
+  findMissingRefs(orderItems, "orderId", orderIds, "id").forEach((f) => findings.push(`orphan OrderItem (orderId): ${f}`));
+  findMissingRefs(orderItems, "productId", productIds, "id").forEach((f) => findings.push(`orphan OrderItem (productId): ${f}`));
+
+  const orderAddresses = await prisma.orderAddressSnapshot.findMany({ select: { id: true, orderId: true } });
+  findMissingRefs(orderAddresses, "orderId", orderIds, "id").forEach((f) => findings.push(`orphan OrderAddressSnapshot: ${f}`));
+
+  findMissingRefs(await prisma.order.findMany({ select: { orderNumber: true, userId: true } }), "userId", userIds, "orderNumber").forEach((f) => findings.push(`orphan Order.user: ${f}`));
+
+  const statusHistory = await prisma.orderStatusHistory.findMany({ select: { id: true, orderId: true } });
+  findMissingRefs(statusHistory, "orderId", orderIds, "id").forEach((f) => findings.push(`orphan OrderStatusHistory: ${f}`));
+
+  const negativeInv = await prisma.inventory.findMany({ where: { quantity: { lt: 0 } }, select: { productId: true, quantity: true } });
+  negativeInv.forEach((i) => findings.push(`negative inventory: product ${i.productId} = ${i.quantity}`));
+
+  for (const c of await prisma.cart.findMany({ where: { status: "CONVERTED" }, select: { id: true } })) {
+    const linked = await prisma.order.findUnique({ where: { cartId: c.id }, select: { id: true } });
+    if (!linked) findings.push(`converted cart without order: ${c.id}`);
+  }
+  for (const o of await prisma.order.findMany({ where: { cartId: { not: null } }, select: { orderNumber: true, cartId: true } })) {
+    const cart = await prisma.cart.findUnique({ where: { id: o.cartId! }, select: { status: true } });
+    if (!cart || cart.status !== "CONVERTED") findings.push(`order ${o.orderNumber} references non-converted cart`);
+  }
+
   // --- Özet ---
   const counts = {
     products: await prisma.product.count(),
@@ -130,6 +162,10 @@ async function main() {
     addresses: await prisma.address.count(),
     carts: await prisma.cart.count(),
     cartItems: await prisma.cartItem.count(),
+    orders: await prisma.order.count(),
+    orderItems: await prisma.orderItem.count(),
+    orderAddressSnapshots: await prisma.orderAddressSnapshot.count(),
+    orderStatusHistory: await prisma.orderStatusHistory.count(),
   };
 
   console.log("=== DB Integrity Check ===");
