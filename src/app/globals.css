@@ -173,3 +173,17 @@ a { text-decoration: none; color: inherit; }
 .stat-card { background: white; border-radius: 12px; padding: 18px; box-shadow: var(--shadow); border-left: 4px solid var(--orange); }
 .stat-card .num { font-size: 1.6rem; font-weight: 800; color: var(--brown); }
 .stat-card .label { font-size: 0.78rem; color: var(--gray-600); }
+
+/* FAZ 2 — Sekmeli ürün formu (Bölüm 8) */
+.product-tabs { display: flex; gap: 4px; flex-wrap: wrap; border-bottom: 2px solid var(--gray-200); margin-bottom: 18px; }
+.product-tab { padding: 8px 14px; border: none; background: transparent; font-size: 0.8rem; font-weight: 700; color: var(--gray-600); cursor: pointer; border-bottom: 3px solid transparent; margin-bottom: -2px; }
+.product-tab:hover { color: var(--orange); }
+.product-tab.active { color: var(--orange); border-bottom-color: var(--orange); }
+.tab-panel { min-height: 120px; }
+.margin-box { background: var(--gray-50); border: 1px solid var(--gray-200); border-radius: 10px; padding: 14px 16px; margin-top: 10px; font-size: 0.85rem; display: flex; flex-direction: column; gap: 4px; max-width: 340px; }
+.image-tile { width: 140px; text-align: center; }
+.image-tile img { width: 140px; height: 140px; object-fit: cover; border-radius: 8px; border: 1px solid var(--gray-200); }
+.image-tile { position: relative; }
+.price-decision-table { width: 100%; font-size: 0.8rem; border-collapse: collapse; margin-top: 8px; }
+.price-decision-table td, .price-decision-table th { padding: 6px 8px; border-bottom: 1px solid var(--gray-200); }
+.price-decision-table tr.winner td { background: #DFF0D8; font-weight: 700; }
