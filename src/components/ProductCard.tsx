@@ -1,3 +1,5 @@
+import { AddToCartButton } from "@/components/AddToCartButton";
+
 export interface ProductCardProduct {
   id: string;
   slug: string;
@@ -80,6 +82,9 @@ export function ProductCard({ product, whatsappNumber }: { product: ProductCardP
         >
           <i className="fab fa-whatsapp" /> Sipariş Ver
         </a>
+        {/* FAZ 4A — Bölüm 12/25: gerçek sepete ekleme, WhatsApp'ın YANINDA
+            ikincil bir aksiyon olarak (bkz. AddToCartButton.tsx başlığı). */}
+        <AddToCartButton productId={product.id} inStock={product.inStock} />
       </div>
     </article>
   );

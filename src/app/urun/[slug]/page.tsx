@@ -4,6 +4,7 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { MobileTabBar } from "@/components/MobileTabBar";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { ProductCard, type ProductCardProduct } from "@/components/ProductCard";
+import { QuantityAddToCart } from "@/components/QuantityAddToCart";
 import { JsonLd } from "@/components/JsonLd";
 import { buildProductJsonLd, buildBreadcrumbJsonLd } from "@/lib/structured-data";
 import { buildProductBreadcrumb, type BreadcrumbCategory } from "@/lib/breadcrumb";
@@ -216,9 +217,13 @@ export default async function ProductPage({ params }: { params: { slug: string }
               >
                 <i className="fab fa-whatsapp" /> WhatsApp ile Sipariş Ver
               </a>
-              <p className="hero-promo" style={{ margin: "0 0 24px" }}>
+              <p className="hero-promo" style={{ margin: "0 0 10px" }}>
                 <i className="fas fa-tag" /> WhatsApp siparişlerinde <strong>%{discountPct} indirim!</strong>
               </p>
+
+              {/* FAZ 4A — Bölüm 12/14: gerçek sepete ekleme (miktar seçici) */}
+              <QuantityAddToCart productId={product.id} inStock={product.inStock} />
+              <div style={{ marginBottom: 10 }} />
 
               {product.description && (
                 <div style={{ marginBottom: 24 }}>
