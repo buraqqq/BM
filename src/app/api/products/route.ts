@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentlyActiveCampaigns } from "@/lib/pricing";
 import { serializePublicProduct } from "@/lib/serialize";
 import { buildProductSearchWhere, buildProductOrderBy, parseSortKey } from "@/lib/search";
+import { getFinalPriceSortedPage } from "@/lib/price-sort";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +19,11 @@ export const dynamic = "force-dynamic";
  * inşası — bkz. o dosyanın başındaki mimari notu). `subtree=1` verilmezse
  * davranış FAZ 2'deki gibi kalır (yalnızca doğrudan bu kategoriye ait
  * ürünler) — bu, mevcut çağrıları kırmamak için varsayılan kapalı.
+ *
+ * FAZ 3.1 — Bölüm 1: `sort=price_asc|price_desc`, DB'deki liste fiyatı
+ * yerine GERÇEK satış (final, kampanya/manuel indirim sonrası) fiyatına
+ * göre sıralar — bkz. src/lib/price-sort.ts (mimari gerekçe ve
+ * "tümünü çekme" naifliğinden nasıl kaçınıldığı orada anlatılıyor).
  */
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -43,19 +49,37 @@ export async function GET(req: NextRequest) {
     inStockOnly,
     featuredOnly,
   });
-  const orderBy = buildProductOrderBy(sort, !!search);
 
-  const [items, total, activeCampaigns] = await Promise.all([
-    prisma.product.findMany({
-      where,
+  const activeCampaigns = await getCurrentlyActiveCampaigns();
+
+  let items;
+  let total;
+
+  if (sort === "price_asc" || sort === "price_desc") {
+    const direction = sort === "price_asc" ? "asc" : "desc";
+    const sorted = await getFinalPriceSortedPage(where, direction, page, pageSize, activeCampaigns);
+    total = sorted.total;
+    const rows = await prisma.product.findMany({
+      where: { id: { in: sorted.orderedIds } },
       include: { category: true, brand: true, images: true, inventory: true },
-      orderBy,
-      skip: (page - 1) * pageSize,
-      take: pageSize,
-    }),
-    prisma.product.count({ where }),
-    getCurrentlyActiveCampaigns(),
-  ]);
+    });
+    // Prisma `id: { in }` sırayı garanti etmez — price-sort'un ürettiği
+    // (final fiyata göre doğru) sırayı burada geri uyguluyoruz.
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    items = sorted.orderedIds.map((id) => byId.get(id)).filter((r): r is NonNullable<typeof r> => !!r);
+  } else {
+    const orderBy = buildProductOrderBy(sort, !!search);
+    [items, total] = await Promise.all([
+      prisma.product.findMany({
+        where,
+        include: { category: true, brand: true, images: true, inventory: true },
+        orderBy,
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      prisma.product.count({ where }),
+    ]);
+  }
 
   return NextResponse.json({
     items: items.map((p) => serializePublicProduct(p, activeCampaigns)),

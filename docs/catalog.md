@@ -41,3 +41,28 @@ Gerçek veride hâlâ hiç alt kategori olmadığı için (`Category` tablosunda
 ## Ürün SEO alanları
 
 Her ürün ve kategoride `seoTitle`/`seoDescription` (opsiyonel, admin panelinden düzenlenir). Boşsa otomatik bir öneri **hesaplanmaz ve otomatik kaydedilmez** (Bölüm 29 gereksinimi) — yalnızca sayfa render'ında fallback olarak ürün adı/kısa açıklama kullanılır, DB'ye hiçbir şey yazılmaz.
+
+## Fiyata göre sıralama — final (satış) fiyatı ve gelecek notu (FAZ 3.1, Bölüm 1/2)
+
+`/api/products?sort=price_asc|price_desc` (dolayısıyla `/urunler`, `/kategori/:slug`, `/arama`) artık DB'deki liste fiyatına değil, kampanya/manuel indirim uygulanmış **gerçek satış (final) fiyatına** göre sıralıyor — bkz. `src/lib/price-sort.ts`. Fiyat hesaplama mantığı burada **ikinci kez yazılmadı**; `src/lib/pricing.ts`'teki `computeFinalPrice` (tek doğruluk kaynağı) doğrudan kullanılıyor.
+
+**Neden tam bir SQL `ORDER BY final_price` yok**: final fiyat, kampanyaların tarih/kapsam durumuna göre çalışma zamanında hesaplanan türetilmiş bir değer — SQLite'ta sorgulanabilir bir sütun değil. Bunu doğrudan SQL'de (CASE/subquery ile) hesaplamak, `computeFinalPrice`'ın kampanya/indirim mantığını farklı bir dilde (SQL) yeniden yazmak anlamına gelirdi — bu açıkça istenmedi.
+
+**Uygulanan geçici (ama naif olmayan) çözüm**: indirimden etkilenebilecek ürünler (salePrice dolu + aktif PRODUCT/CATEGORY kapsamlı kampanyaların hedefleri) sınırlı bir alt küme olarak hesaplanır; etkilenmeyen çoğunluk zaten SQL'in `ORDER BY price` sıralamasıyla doğru gelir; ikisi merge edilir. Maliyet, kataloğun tamamıyla değil, sayfa derinliği + etkilenen ürün sayısıyla orantılıdır. Tek bilinen, dokümante edilmiş istisna: **aktif bir GLOBAL kapsamlı kampanya** varken (herkesi etkilediği için) filtrelenmiş kümenin tamamı (yalnızca 5 skaler alan, ilişki JOIN'i olmadan) taranır — şu an gerçek veride hiçbir GLOBAL kampanya yok, bu dal yalnızca doğruluk için var ve birim testle kapsanıyor.
+
+**Gerçek/kalıcı çözüm (FAZ 4+ önerisi)**: `Product` tablosuna, kampanya/fiyat değişiminde senkron tutulan materialized bir `effectivePrice` sütunu (veya PostgreSQL'e geçişte bir generated column / trigger) eklemek — bu, final fiyata göre gerçek bir indexed `ORDER BY` sağlar ve 10.000+ ürün + aktif GLOBAL kampanya kombinasyonunda bile O(sayfa boyutu) maliyetli kalır. SQLite + mevcut mimaride bu, kampanya create/update/delete ve ürün price/salePrice/compareAtPrice değişiminin HEPSİNİN bu sütunu güncellemesini gerektirir — kapsamı FAZ 3.1'in "mevcut çalışan sistemi gereksiz karmaşıklaştırma" kısıtıyla çelişeceği için bu fazda yapılmadı.
+
+## Product Image Storage — gelecek ihtiyaç notu (FAZ 3.1, Bölüm 6)
+
+FAZ 3.1 QA turunda `ProductImage` sisteminin uçtan uca (oluşturma API'si, `altText`, `sortOrder`, `isPrimary`/`isMobilePrimary`, ürün detay/ProductCard/JSON-LD render'ı) gerçek bir test görseliyle çalıştığı doğrulandı (bkz. FAZ3.1 raporu Bölüm C) — bu fazda **yeni bir depolama servisi eklenmedi**, yalnızca mevcut kabiliyet doğrulandı. Gerçek üretim ölçeğine geçildiğinde aşağıdakiler ayrı bir FAZ'da ele alınmalı:
+
+- **Local development**: mevcut hâliyle korunmalı — `src/lib/storage.ts`, `STORAGE_LOCAL_PATH=./public/uploads` altına yazıyor, `/uploads/<kategori>/<dosya>` göreli URL'i dönüyor. Geliştirme ortamı için yeterli, değiştirilmesine gerek yok.
+- **Production object storage**: S3-uyumlu bir servis (S3, Cloudflare R2, vb.) — `STORAGE_DRIVER` zaten ortam değişkeni olarak var (`"local"`), ileride `"s3"` gibi bir sürücü eklenip `storage.ts`'in arayüzü (`upload(file): {url}`) korunarak geçiş yapılabilir.
+- **CDN**: object storage önüne konacak bir CDN (statik görsellerin coğrafi olarak yakın sunulması).
+- **Image optimization**: yükleme anında veya CDN katmanında yeniden boyutlandırma/sıkıştırma (şu an hiçbir optimizasyon yok — yüklenen dosya olduğu gibi saklanıyor).
+- **Thumbnail**: liste/kart görünümleri (`ProductCard`) için ayrı, küçük boyutlu bir varyant — şu an tüm görünümler aynı orijinal URL'i kullanıyor.
+- **Mobile image**: `ProductImage.isMobilePrimary` alanı zaten var (FAZ 2'den) ve galerideki mevcut görsellerden birini mobilde öncelikli işaretlemeye izin veriyor — ayrı bir mobil-optimize dosya YÜKLEMEsi henüz yok, yalnızca mevcut görsellerden seçim var.
+
+**Bu fazda eklenmedi**: S3/Cloudinary/Cloudflare Images gibi harici bir servis entegrasyonu, görsel optimizasyon pipeline'ı, thumbnail üretimi. Bunlar kullanıcının açık isteğiyle "bu fazın kapsamı dışı" tutuldu (bkz. FAZ3.1 talimatı Bölüm 6).
+
+**Bilinen, düzeltilmeyen (kasıtlı) davranış — image URL validation**: `POST /api/admin/products/:id/images`'teki `url` alanı yalnızca `z.string().min(1).max(1000)` ile doğrulanıyor, `.url()` formatı ZORUNLU KILINMIYOR. Bu bir gözden kaçma değil — `src/lib/storage.ts`'in döndürdüğü gerçek yükleme URL'leri `/uploads/urunler/<dosya>` gibi GÖRELİ path'lerdir (mutlak URL değil); `.url()` doğrulaması eklenirse mevcut yükleme akışı KIRILIRDI. FAZ3.1'de bu nedenle bilerek DEĞİŞTİRİLMEDİ — doğru düzeltme, göreli path'leri de kabul eden özel bir doğrulama (regex veya "göreli path OU mutlak URL" birleşik şeması) olurdu, ayrı bir iterasyon gerektirir.
