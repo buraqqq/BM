@@ -117,6 +117,45 @@ export const DELIVERY_METHOD_LABELS: Record<DeliveryMethod, string> = {
   DELIVERY: "Kargo ile Teslimat",
 };
 
+// FAZ 4C — Bölüm D: sipariş durumları. SQLite native enum desteklemediği
+// için String olarak tutulur; izin verilen değerler burada tek kaynak olarak
+// tanımlanır (bkz. prisma/schema.prisma Order modeli). Durum geçiş kuralları
+// src/lib/order-logic.ts içinde SAF fonksiyon olarak tutulur (DB'den ayrı,
+// birim testli) — burada yalnızca geçerli değerler ve UI etiketleri.
+export const ORDER_STATUSES = ["PENDING", "CONFIRMED", "PREPARING", "READY", "SHIPPED", "COMPLETED", "CANCELLED"] as const;
+export type OrderStatus = (typeof ORDER_STATUSES)[number];
+
+export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
+  PENDING: "Beklemede",
+  CONFIRMED: "Onaylandı",
+  PREPARING: "Hazırlanıyor",
+  READY: "Hazır",
+  SHIPPED: "Kargoya Verildi",
+  COMPLETED: "Tamamlandı",
+  CANCELLED: "İptal Edildi",
+};
+
+// FAZ 4C — Bölüm E: ödeme durumu. Gerçek ödeme sağlayıcısı BU FAZDA YOK —
+// sipariş oluşturulduğunda başlangıç durumu her zaman PENDING'dir ("ödeme
+// alındı" gibi sahte bir durum üretilmez). "CANCELLED" bilinçli olarak listede
+// YOK: sipariş iptali Order.status tarafından temsil edilir; ödeme durumu
+// PENDING/PAID/FAILED/REFUNDED ile sınırlıdır (gereksiz bir çift anlam
+// önlenir, seçim gerekçesi docs/commerce.md'de).
+export const PAYMENT_STATUSES = ["PENDING", "PAID", "FAILED", "REFUNDED"] as const;
+export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
+
+export const PAYMENT_STATUS_LABELS: Record<PaymentStatus, string> = {
+  PENDING: "Ödeme Bekliyor",
+  PAID: "Ödendi",
+  FAILED: "Başarısız",
+  REFUNDED: "İade Edildi",
+};
+
+// FAZ 4C — sipariş para birimi. Gerçek çoklu-para-birimi desteği yok; TRY
+// sabit tutulur (ileride Setting tabanlı hale getirilebilir, şimdilik uydurma
+// bir dönüşüm/para listesi eklenmedi).
+export const ORDER_CURRENCY = "TRY";
+
 export const CAMPAIGN_DISCOUNT_TYPES = ["PERCENTAGE", "FIXED_AMOUNT"] as const;
 export type CampaignDiscountType = (typeof CAMPAIGN_DISCOUNT_TYPES)[number];
 
@@ -179,5 +218,9 @@ export const AUDIT_ACTIONS = [
   "PRODUCT_IMPORT",
   "PRODUCT_EXPORT",
   "SETTINGS_UPDATE",
+  // FAZ 4C — Bölüm L: sipariş yönetimi. Admin sipariş durumunu/ödeme durumunu
+  // değiştirdiğinde AuditLog'a yazılır (transition order-logic ile doğrulanır).
+  "ORDER_STATUS_UPDATE",
+  "ORDER_PAYMENT_STATUS_UPDATE",
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];

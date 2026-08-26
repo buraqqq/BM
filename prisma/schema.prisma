@@ -71,6 +71,7 @@ model User {
 
   addresses Address[]
   carts     Cart[]
+  orders    Order[]
 
   @@map("users")
 }
@@ -165,6 +166,100 @@ model CartItem {
 }
 
 // ----------------------------------------------------------
+// ----------------------------------------------------------
+// FAZ 4C — Sipariş (Order)
+//
+// "Cart → Checkout Validation → Order Creation → Inventory Update" zincirinin
+// son halkası. Gerçek ödeme sağlayıcısı YOK (bu fazın kesin sınırı): Order
+// oluşturulur, paymentStatus "PENDING" başlar. Tasarım kararları:
+//  - Address doğrudan kullanılmaz; sipariş anındaki adres OrderAddressSnapshot'a kopyalanır.
+//  - OrderItem ürünün değişebilir alanlarını (ad/SKU/fiyat) snapshot saklar; productId
+//    referansı "mümkünse korunur" (onDelete: SetNull).
+//  - orderNumber tahmin edilmesi zor rastgele referans (BM-XXXXXXXX); @unique.
+//  - cartId (unique) kaynak sepeti işaretler: idempotency + converted-cart bütünlüğü.
+//  - Durum/ödeme değerleri enums.ts'te (ORDER_STATUSES / PAYMENT_STATUSES).
+// ----------------------------------------------------------
+
+model Order {
+  id              String   @id @default(cuid())
+  orderNumber     String   @unique
+  cartId          String?  @unique
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+  status          String   @default("PENDING")
+  paymentStatus   String   @default("PENDING")
+  deliveryMethod  String
+  currency        String   @default("TRY")
+  subtotal        Decimal
+  discount        Decimal  @default(0)
+  shippingAmount  Decimal  @default(0)
+  shippingComputed Boolean @default(false)
+  shippingNote    String?
+  total           Decimal
+  customerNote    String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  items           OrderItem[]
+  addressSnapshot OrderAddressSnapshot?
+  statusHistory   OrderStatusHistory[]
+
+  @@index([userId, createdAt])
+  @@index([status])
+  @@map("orders")
+}
+
+model OrderItem {
+  id          String   @id @default(cuid())
+  orderId     String
+  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId   String?
+  product     Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  productName String
+  sku         String
+  quantity    Int
+  unitPrice   Decimal
+  lineTotal   Decimal
+  createdAt   DateTime @default(now())
+
+  @@index([orderId])
+  @@index([productId])
+  @@map("order_items")
+}
+
+model OrderAddressSnapshot {
+  id           String  @id @default(cuid())
+  orderId      String  @unique
+  order        Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  firstName    String
+  lastName     String
+  phone        String
+  city         String
+  district     String
+  neighborhood String?
+  addressLine  String
+  postalCode   String?
+  country      String
+  createdAt    DateTime @default(now())
+
+  @@map("order_address_snapshots")
+}
+
+// FAZ 4C — Bölüm M: sipariş durum geçmişi. Müşterinin kendi siparişinin
+// yaşam döngüsünü görebilmesi için ayrı, müşteri-güvenli zaman çizelgesi.
+// Admin "kim/IP" bilgisi AuditLog'da (Bölüm L) tutulur; iki kaygı ayrı.
+model OrderStatusHistory {
+  id         String   @id @default(cuid())
+  orderId    String
+  order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  fromStatus String?
+  toStatus   String
+  createdAt  DateTime @default(now())
+
+  @@index([orderId])
+  @@map("order_status_history")
+}
+
 // Katalog
 // ----------------------------------------------------------
 
@@ -308,6 +403,7 @@ model Product {
   banners          Banner[]
   attributeValues  ProductAttributeValue[]
   cartItems        CartItem[]
+  orderItems       OrderItem[]
 
   @@index([categoryId])
   @@index([isActive])
