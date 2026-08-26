@@ -8,13 +8,10 @@ import { CartBadge } from "@/components/CartBadge";
 // FAZ 3 — Bölüm 1/5/6: "Ürünler" (yeni /urunler listeleme sayfası) ve
 // header arama kutusu eklendi. Ana sayfaya özel "#kategoriler"/"#iletisim"
 // hash linkleri yalnızca ana sayfadayken anlamlıdır — diğer sayfalardan
-// (kategori/ürün/arama) tıklanınca önce "/"e gidip sonra o bölüme kayar
-// (tarayıcı varsayılan davranışı, ek kod gerekmedi).
+// (kategori/ürün/arama) tıklanınca önce "/"e gidip sonra o bölüme kayar.
+// FAZ 5 — "Bahçe Tasarımı" (AI Garden Designer) nav'a eklendi.
 export function SiteHeader() {
   const [open, setOpen] = useState(false);
-  // FAZ 4A — Bölüm 1/24: header'da hesap durumu + sepet rozeti. `status`
-  // "loading" iken hiçbir şey varsayılmıyor (giriş linkinin bir an "Giriş
-  // Yap" gösterip hemen "Hesabım"a dönmesi gibi bir titremeyi önler).
   const { data: session, status } = useSession();
   const isCustomer = status === "authenticated" && session?.user?.kind === "customer";
 
@@ -34,6 +31,7 @@ export function SiteHeader() {
           <nav className="nav">
             <a href="/">Ana Sayfa</a>
             <a href="/urunler">Ürünler</a>
+            <a href="/bahce-tasarimi">Bahçe Tasarımı</a>
             <a href="/#kategoriler">Kategoriler</a>
             <a href="/#iletisim">İletişim</a>
             <a href={isCustomer ? "/hesabim" : "/giris"}>{isCustomer ? "Hesabım" : "Giriş Yap"}</a>
@@ -63,6 +61,9 @@ export function SiteHeader() {
         </a>
         <a href="/urunler" className="mobile-link" onClick={() => setOpen(false)}>
           Ürünler
+        </a>
+        <a href="/bahce-tasarimi" className="mobile-link" onClick={() => setOpen(false)}>
+          Bahçe Tasarımı
         </a>
         <a href="/#kategoriler" className="mobile-link" onClick={() => setOpen(false)}>
           Kategoriler
