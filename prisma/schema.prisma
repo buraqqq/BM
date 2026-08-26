@@ -1,0 +1,412 @@
+// ==========================================================
+// B&M Vourla — Prisma Schema (FAZ 1)
+// Veritabanı: SQLite (bkz. .env.example ve docs/database.md için
+// hosted Postgres/libSQL'e geçiş notları)
+// ==========================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ----------------------------------------------------------
+// Kimlik & Yetkilendirme
+// ----------------------------------------------------------
+
+model AdminUser {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  name         String
+  // SQLite native enum desteklemez; izin verilen değerler uygulama katmanında
+  // (src/lib/enums.ts + zod) zorunlu kılınır: SUPER_ADMIN | ADMIN | STAFF
+  role         String    @default("ADMIN")
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  loginAttempts  LoginAttempt[]
+  auditLogs      AuditLog[]
+  priceChanges   PriceHistory[]
+  inventoryMoves InventoryMovement[]
+
+  @@map("admin_users")
+}
+
+// Rate limiting / brute-force koruması için (bkz. docs/security.md)
+model LoginAttempt {
+  id          String     @id @default(cuid())
+  email       String
+  ipAddress   String?
+  success     Boolean
+  createdAt   DateTime   @default(now())
+  adminUserId String?
+  adminUser   AdminUser? @relation(fields: [adminUserId], references: [id])
+
+  @@index([email, createdAt])
+  @@map("login_attempts")
+}
+
+// Gelecekteki müşteri hesapları (Market PWA / e-ticaret) için temel — FAZ 1'de
+// hiçbir müşteri-facing özellik bu modele bağlı değildir.
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String?
+  phone        String?
+  passwordHash String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  addresses Address[]
+
+  @@map("users")
+}
+
+model Address {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  label      String
+  line1      String
+  line2      String?
+  city       String
+  district   String?
+  postalCode String?
+  phone      String?
+  isDefault  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@map("addresses")
+}
+
+// ----------------------------------------------------------
+// Katalog
+// ----------------------------------------------------------
+
+model Category {
+  id               String   @id @default(cuid())
+  slug             String   @unique
+  title            String
+  shortDescription String?
+  icon             String?
+  color            String?
+  sortOrder        Int      @default(0)
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  subcategories SubCategory[]
+  products      Product[]
+  banners       Banner[]
+  campaigns     Campaign[]
+
+  @@map("categories")
+}
+
+model SubCategory {
+  id         String   @id @default(cuid())
+  slug       String   @unique
+  name       String
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  sortOrder  Int      @default(0)
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  products  Product[]
+  campaigns Campaign[]
+
+  @@index([categoryId])
+  @@map("subcategories")
+}
+
+model Brand {
+  id       String    @id @default(cuid())
+  slug     String    @unique
+  name     String
+  products Product[]
+
+  @@map("brands")
+}
+
+model Tag {
+  id       String       @id @default(cuid())
+  slug     String       @unique
+  name     String
+  products ProductTag[]
+
+  @@map("tags")
+}
+
+model ProductTag {
+  productId String
+  tagId     String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  tag       Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([productId, tagId])
+  @@map("product_tags")
+}
+
+// Uygulama katmanında zorunlu kılınan değerler (src/lib/enums.ts):
+// ProductUnit: KG | ADET | LITRE | METREKARE | METRE | SET | SISE | TANE | PAKET | GRAM
+// StockStatus: IN_STOCK | LOW_STOCK | OUT_OF_STOCK
+
+model Product {
+  id            String       @id @default(cuid())
+  sku           String       @unique
+  barcode       String?      @unique
+  name          String
+  slug          String       @unique
+  categoryId    String
+  category      Category     @relation(fields: [categoryId], references: [id])
+  subcategoryId String?
+  subcategory   SubCategory? @relation(fields: [subcategoryId], references: [id])
+  brandId       String?
+  brand         Brand?       @relation(fields: [brandId], references: [id])
+
+  shortDescription String?
+  description      String?
+
+  price          Decimal // normal (liste) fiyat
+  compareAtPrice Decimal? // "eski fiyat" / üstü çizili
+  salePrice      Decimal? // admin tarafından elle belirlenmiş indirimli fiyat
+  costPrice      Decimal? // yalnızca admin görür, maliyet analizi için
+
+  taxRate Decimal @default(20) // KDV %
+
+  unit           String  @default("ADET")
+  weight         Float?
+  dimensionsJson String? // JSON: { en, boy, derinlik } — SQLite'ta düz metin
+  attributesJson String? // JSON: serbest nitelikler
+
+  seoTitle       String?
+  seoDescription String?
+
+  isActive   Boolean @default(true)
+  isFeatured Boolean @default(false)
+
+  // Migrasyon izlenebilirliği (products.js -> DB)
+  legacySourceId      String? // eski kategori id + index (ör. "baharat-0")
+  legacyCategoryLabel String? // migrasyon zamanındaki orijinal kategori adı
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  images           ProductImage[]
+  variants         ProductVariant[]
+  inventory        Inventory?
+  priceHistory     PriceHistory[]
+  tags             ProductTag[]
+  campaignProducts CampaignProduct[]
+  banners          Banner[]
+
+  @@index([categoryId])
+  @@index([isActive])
+  @@map("products")
+}
+
+model ProductImage {
+  id        String  @id @default(cuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  url       String
+  altText   String?
+  sortOrder Int     @default(0)
+  isPrimary Boolean @default(false)
+
+  @@index([productId])
+  @@map("product_images")
+}
+
+model ProductVariant {
+  id            String   @id @default(cuid())
+  productId     String
+  product       Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  name          String // ör. "500g", "1kg", "Kırmızı"
+  sku           String   @unique
+  priceOverride Decimal?
+  stock         Int      @default(0)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+
+  @@index([productId])
+  @@map("product_variants")
+}
+
+// ----------------------------------------------------------
+// Stok
+// ----------------------------------------------------------
+
+model Inventory {
+  id                String   @id @default(cuid())
+  productId         String   @unique
+  product           Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  quantity          Int      @default(0)
+  lowStockThreshold Int      @default(5)
+  // IN_STOCK | LOW_STOCK | OUT_OF_STOCK (bkz. src/lib/enums.ts)
+  stockStatus       String   @default("IN_STOCK")
+  updatedAt         DateTime @updatedAt
+
+  movements InventoryMovement[]
+
+  @@map("inventory")
+}
+
+model InventoryMovement {
+  id                String     @id @default(cuid())
+  inventoryId       String
+  inventory         Inventory  @relation(fields: [inventoryId], references: [id], onDelete: Cascade)
+  // RESTOCK | SALE | ADJUSTMENT | MIGRATION (bkz. src/lib/enums.ts)
+  type              String
+  quantityChange    Int
+  resultingQuantity Int
+  reason            String?
+  createdByAdminId  String?
+  createdByAdmin    AdminUser? @relation(fields: [createdByAdminId], references: [id])
+  createdAt         DateTime   @default(now())
+
+  @@index([inventoryId])
+  @@map("inventory_movements")
+}
+
+// ----------------------------------------------------------
+// Fiyat geçmişi
+// ----------------------------------------------------------
+
+model PriceHistory {
+  id          String     @id @default(cuid())
+  productId   String
+  product     Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  field       String // "price" | "compareAtPrice" | "salePrice"
+  oldValue    Decimal?
+  newValue    Decimal?
+  reason      String? // ör. "manual", "bulk:+10%", "migration"
+  changedById String?
+  changedBy   AdminUser? @relation(fields: [changedById], references: [id])
+  createdAt   DateTime   @default(now())
+
+  @@index([productId])
+  @@map("price_history")
+}
+
+// ----------------------------------------------------------
+// Kampanya
+// ----------------------------------------------------------
+
+model Campaign {
+  id            String  @id @default(cuid())
+  name          String
+  slug          String  @unique
+  description   String?
+  // PERCENTAGE | FIXED_AMOUNT (bkz. src/lib/enums.ts)
+  discountType  String
+  discountValue Decimal
+  // PRODUCT | CATEGORY | SUBCATEGORY | GLOBAL (bkz. src/lib/enums.ts)
+  scope         String
+
+  categoryId    String?
+  category      Category?    @relation(fields: [categoryId], references: [id])
+  subcategoryId String?
+  subcategory   SubCategory? @relation(fields: [subcategoryId], references: [id])
+
+  startDate DateTime
+  endDate   DateTime
+  isActive  Boolean  @default(true) // manuel kapatma anahtarı
+
+  bannerText String?
+  ctaText    String?
+  ctaLink    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  products CampaignProduct[]
+  banners  Banner[]
+
+  @@index([startDate, endDate])
+  @@map("campaigns")
+}
+
+model CampaignProduct {
+  id         String   @id @default(cuid())
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  productId  String
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, productId])
+  @@map("campaign_products")
+}
+
+// ----------------------------------------------------------
+// Banner
+// ----------------------------------------------------------
+
+model Banner {
+  id             String   @id @default(cuid())
+  title          String
+  subtitle       String?
+  imageUrl       String
+  mobileImageUrl String?
+  ctaText        String?
+  ctaLink        String?
+  startDate      DateTime
+  endDate        DateTime
+  priority       Int      @default(0)
+  isActive       Boolean  @default(true)
+
+  targetCategoryId String?
+  targetCategory   Category? @relation(fields: [targetCategoryId], references: [id])
+  targetProductId  String?
+  targetProduct    Product?  @relation(fields: [targetProductId], references: [id])
+  targetCampaignId String?
+  targetCampaign   Campaign? @relation(fields: [targetCampaignId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([startDate, endDate])
+  @@map("banners")
+}
+
+// ----------------------------------------------------------
+// Audit Log
+// ----------------------------------------------------------
+
+model AuditLog {
+  id           String     @id @default(cuid())
+  adminUserId  String?
+  adminUser    AdminUser? @relation(fields: [adminUserId], references: [id])
+  action       String // LOGIN, LOGOUT, PRODUCT_CREATE, PRODUCT_UPDATE, PRODUCT_ARCHIVE,
+  // PRICE_UPDATE, CAMPAIGN_CREATE, CAMPAIGN_UPDATE,
+  // BANNER_CREATE, BANNER_UPDATE, INVENTORY_UPDATE, ...
+  entity       String // "Product" | "Campaign" | "Banner" | "Auth" | "Inventory" | ...
+  entityId     String?
+  ipAddress    String?
+  metadataJson String? // JSON serileştirilmiş ek bilgi
+  createdAt    DateTime   @default(now())
+
+  @@index([entity, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// ----------------------------------------------------------
+// Genel Ayarlar (Bize Ulaşın, marka bilgisi vb.)
+// ----------------------------------------------------------
+
+model Setting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  updatedAt DateTime @updatedAt
+
+  @@map("settings")
+}
