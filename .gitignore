@@ -14,3 +14,4 @@ uploads/
 public/uploads/
 .DS_Store
 coverage/
+tsconfig.tsbuildinfo
