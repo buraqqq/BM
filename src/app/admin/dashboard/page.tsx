@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { AffiliatePerformanceCard } from "@/components/AffiliatePerformanceCard";
+import { AdminAnalytics } from "@/components/AdminAnalytics";
 
 interface DashboardData {
   products: { total: number; active: number; inactive: number };
@@ -109,6 +110,9 @@ export default function AdminDashboardPage() {
           </div>
         )}
       </div>
+
+      {/* FAZ 11 — Analitik & performans (alarm + bildirim metrikleri) */}
+      <AdminAnalytics />
 
       {/* FAZ 8 — Affiliate & BOM eşleşme performansı kartı */}
       <AffiliatePerformanceCard />
