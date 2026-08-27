@@ -1,7 +1,7 @@
 # DEVAM DURUMU — B&M Vourla (Kaldığımız Yer)
 
 > Bu dosyayı okuduğunda projeye hâkim olup kaldığın yerden devam edebilirsin.
-> Son güncelleme: 2026-08-27 (FAZ 12 sonu).
+> Son güncelleme: 2026-08-27 (FAZ 13 sonu).
 
 ## Proje konumu & çalıştırma
 
@@ -41,8 +41,9 @@ npx tsx scripts/db-integrity-check.ts
 - **FAZ 10** e-posta bildirim servisi (email-service: CONSOLE/MOCK/RESEND adapter + alert trigger entegrasyonu + 15 unit test)
 - **FAZ 11** admin analitik & performans dashboard'u (analytics-service: alarm istatistikleri + en çok alarm kurulan ürünler + e-posta teslimat başarı oranı + /api/admin/analytics + AdminAnalytics UI)
 - **FAZ 12** dokümantasyon + production hazırlığı (DEPLOYMENT.md deploy/env/cron/güvenlik rehberi)
+- **FAZ 13** alarm iptali soft-cancel (ProductAlert.status ACTIVE/CANCELLED) + cron servis-token (GET /api/cron/alerts + cron-auth.ts + Netlify Scheduled Function)
 
-**Git HEAD:** `33b456a` (son commit'ler: FAZ 11 analytics dashboard → FAZ 10 docs → FAZ 10 email → FAZ 9 mojibake fix → FAZ 9 alerts).
+**Git HEAD:** `53b1106` (son commit: FAZ 13 — alarm soft-cancel CANCELLED + cron servis-token).
 
 ## Veritabanı durumu (dev.db)
 
@@ -61,8 +62,8 @@ npx tsx scripts/db-integrity-check.ts
 ## Doğrulama durumu (son)
 
 - `npx tsc --noEmit` → **0 hata** ✅
-- `npm test` → **271/271** (26 dosya) ✅
-- `npm run build` → **başarılı** (FAZ 11 sonrası da doğrulandı, 32 statik sayfa).
+- `npm test` → **288/288** (27 dosya) ✅
+- `npm run build` → **başarılı** (FAZ 13 sonrası doğrulandı).
 
 ## Commit'lenmemiş durum
 
@@ -70,11 +71,11 @@ npx tsx scripts/db-integrity-check.ts
 
 ## Sıradaki işler (önerilen sıra)
 
-1. **Production deploy**: `DEPLOYMENT.md`'deki adımları izle — kalıcı disk sunmayan platform (Vercel) için SQLite → hosted Postgres (Neon/Supabase) geçişi ZORUNLU; `DATABASE_URL` tek satır değişikliği.
-2. **Alarm cron'u**: `checkAndTriggerAlerts()` şu an yalnızca `POST /api/admin/alerts/trigger` ile manuel tetikleniyor. Üretimde harici bir cron (Vercel Cron / GitHub Actions / uptime ping) ile periyodik çağrı bağlanmalı (bkz. DEPLOYMENT.md).
-3. **Gerçek e-posta teslimatı**: `.env`'de `EMAIL_PROVIDER=RESEND` + `RESEND_API_KEY` + gerçek `EMAIL_FROM` ayarlanana kadar bildirimler CONSOLE'a düşer (`delivered:false` — dürüst mock).
-4. **Affiliate gerçek ürün linkleri**: hâlâ satıcı-arama URL'leri; admin'de gerçek ürün linklerine çevrilecek.
-5. İstenirse `ProductAlert`'a gerçek bir `status` (CANCELLED) alanı eklenebilir — şu an iptal DELETE ile kalıcı siliniyor, CANCELLED istatistiği bu yüzden 0.
+- ✅ **Alarm cron'u** (FAZ 13): `GET /api/cron/alerts` servis-token ucu + Netlify Scheduled Function eklendi. Deploy sonrası `CRON_SECRET` env'ini ayarla (bkz. DEPLOYMENT.md Bölüm 5).
+- ✅ **ProductAlert CANCELLED** (FAZ 13): iptal artık soft-cancel (status=CANCELLED); admin analitik CANCELLED'ı gerçek sayar.
+- ⬜ **Production deploy**: `DEPLOYMENT.md` — kalıcı disk sunmayan platform (Vercel/Netlify) için SQLite → hosted Postgres (Neon/Supabase) geçişi ZORUNLU; `DATABASE_URL` tek satır değişikliği.
+- ⬜ **Gerçek e-posta teslimatı**: `.env`'de `EMAIL_PROVIDER=RESEND` + `RESEND_API_KEY` + gerçek `EMAIL_FROM` ayarlanana kadar bildirimler CONSOLE'a düşer (`delivered:false` — dürüst mock).
+- ⬜ **Affiliate gerçek ürün linkleri**: hâlâ satıcı-arama URL'leri; admin'de gerçek ürün linklerine çevrilecek.
 
 ## Araç/tooling uyarıları (gelecek oturum için)
 
