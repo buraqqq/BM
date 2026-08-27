@@ -1,0 +1,20 @@
+# ==========================================================
+# B&M Vourla — Netlify Deployment Config
+# ==========================================================
+# Not: Netlify build ortamı kalıcı disk sunmadığı için SQLite KULLANILAMAZ.
+# Deploy öncesi prisma/schema.prisma'daki datasource'u "postgresql" yapıp
+# DATABASE_URL'i hosted Postgres'e (Neon/Supabase) çevirin (bkz. DEPLOYMENT.md).
+# ==========================================================
+
+[build]
+  # Prisma client üret → migration'ları uygula → Next.js production build
+  command = "npx prisma generate && npx prisma migrate deploy && npm run build"
+  publish = ".next"
+
+# Next.js App Router için resmi Netlify eklentisi (serverless fonksiyonları,
+# SSR/ISR yönlendirmesi ve .next çıktısını Netlify'a uyarlar).
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+[build.environment]
+  NODE_VERSION = "20"

@@ -84,6 +84,43 @@ npm run start     # next start -p 3000
 Vercel'de: framework "Next.js" otomatik algılanır; build command `npm run build`,
 output varsayılandır. Tek ek gereksinim hosted Postgres (Bölüm 2).
 
+### Netlify
+
+Netlify'da build `netlify.toml` (kök dizinde) ile yönetilir — dosya zaten repo'da
+hazırdır ve şunu yapar:
+
+- **Build command:** `npx prisma generate && npx prisma migrate deploy && npm run build`
+  (Prisma client üret → migration uygula → Next.js build).
+- **Publish:** `.next` — `@netlify/plugin-nextjs` eklentisiyle birlikte.
+
+Netlify'a özel adımlar:
+
+1. **Veritabanı:** Netlify kalıcı disk sunmadığı için SQLite **kesinlikle çalışmaz**.
+   Deploy'dan önce `prisma/schema.prisma` → `provider = "postgresql"`, `DATABASE_URL`
+   = hosted Postgres (Neon/Supabase) — bkz. Bölüm 2.
+2. **Env vars:** Netlify UI → Site settings → Environment variables. En az
+   `DATABASE_URL`, `NEXTAUTH_SECRET`, `NEXTAUTH_URL`, `NEXT_PUBLIC_APP_URL`,
+   `NODE_ENV=production` ekle. E-posta için `EMAIL_PROVIDER`/`RESEND_API_KEY`/
+   `EMAIL_FROM` (Bölüm 6).
+3. **Build command doğrulaması:** `netlify.toml`'daki `[build]` zaten doğru;
+   ayrıca Netlify UI'da override etme.
+4. **İlk seed:** Migration'lar `prisma migrate deploy` ile otomatik uygulanır,
+   ancak seed verisi (admin kullanıcısı + ürünler) deploy'da otomatik ÇALIŞMAZ.
+   İlk deploy sonrası bir defaya mahsus yerel ortamda (Postgres'e `DATABASE_URL`
+   bağlıyken) `npx tsx prisma/seed-admin.ts` ve `npx tsx prisma/seed-garden-products.ts`
+   çalıştır — ya da bunu tek seferlik bir build adımına ekle.
+5. **Scheduled Functions (alarm cron'u):** `checkAndTriggerAlerts()`'i periyodik
+   tetiklemek için Netlify Scheduled Functions kullan. `netlify.toml`'a:
+   ```toml
+   [functions."alerts-trigger"]
+     schedule = "*/15 * * * *"
+   ```
+   > Dikkat: `POST /api/admin/alerts/trigger` `requireAdmin` korumalıdır. Scheduled
+   > Function bu uca kimlik doğrulamalı istek atamaz — ya endpoint'e ayrı bir
+   > servis-token mekanizması eklenmeli (bu FAZ'da yok) ya da scheduled function
+   > `checkAndTriggerAlerts()`'i doğrudan içe aktarıp çağırmalıdır (serverless
+   > function bağlamında `prisma` çalışır). İkincisi önerilen yoldur.
+
 ---
 
 ## 5. Cron: Alarm tetikleme
