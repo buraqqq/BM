@@ -18,6 +18,10 @@ import {
   buildCareGuide,
   matchBomToCatalog,
   computeCostCard,
+  buildZonesFromLayout,
+  generateDesignWithZones,
+  reviseZonePercent,
+  type ZoneLayoutItem,
   type SpaceInput,
   type InternalProductRef,
   type AffiliateRef,
@@ -103,11 +107,11 @@ function buildPrompt(input: SpaceInput): string {
 }
 
 // ---- OpenAI / DeepSeek (OpenAI-uyumlu) ----
-async function callOpenAiCompatible(apiKey: string, baseUrl: string, model: string, input: SpaceInput, photoDataUrl?: string): Promise<unknown> {
+async function callOpenAiCompatible(apiKey: string, baseUrl: string, model: string, prompt: string, photoDataUrl?: string): Promise<unknown> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), LLM_TIMEOUT_MS);
   try {
-    const content: unknown[] = [{ type: "text", text: buildPrompt(input) }];
+    const content: unknown[] = [{ type: "text", text: prompt }];
     if (photoDataUrl) content.push({ type: "image_url", image_url: { url: photoDataUrl } });
     const res = await fetch(baseUrl, {
       method: "POST",
@@ -124,11 +128,11 @@ async function callOpenAiCompatible(apiKey: string, baseUrl: string, model: stri
 }
 
 // ---- Gemini ----
-async function callGemini(apiKey: string, model: string, input: SpaceInput, photoDataUrl?: string): Promise<unknown> {
+async function callGemini(apiKey: string, model: string, prompt: string, photoDataUrl?: string): Promise<unknown> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), LLM_TIMEOUT_MS);
   try {
-    const parts: unknown[] = [{ text: buildPrompt(input) }];
+    const parts: unknown[] = [{ text: prompt }];
     if (photoDataUrl) {
       const m = photoDataUrl.match(/^data:(image\/[a-z0-9.+-]+);base64,(.+)$/i);
       if (m) parts.push({ inline_data: { mime_type: m[1], data: m[2] } });
@@ -150,11 +154,11 @@ async function callGemini(apiKey: string, model: string, input: SpaceInput, phot
 }
 
 // ---- Anthropic ----
-async function callAnthropic(apiKey: string, model: string, input: SpaceInput, photoDataUrl?: string): Promise<unknown> {
+async function callAnthropic(apiKey: string, model: string, prompt: string, photoDataUrl?: string): Promise<unknown> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), LLM_TIMEOUT_MS);
   try {
-    const content: unknown[] = [{ type: "text", text: buildPrompt(input) }];
+    const content: unknown[] = [{ type: "text", text: prompt }];
     if (photoDataUrl) {
       const m = photoDataUrl.match(/^data:(image\/[a-z0-9.+-]+);base64,(.+)$/i);
       if (m) content.push({ type: "image", source: { type: "base64", media_type: m[1], data: m[2] } });
@@ -207,10 +211,10 @@ export async function generateDesignWithFallback(
   if (provider) {
     try {
       let raw: unknown;
-      if (provider === "openai") raw = await callOpenAiCompatible(env.OPENAI_API_KEY!, "https://api.openai.com/v1/chat/completions", env.OPENAI_MODEL ?? "gpt-4o-mini", input, opts?.photoDataUrl);
-      else if (provider === "deepseek") raw = await callOpenAiCompatible(env.DEEPSEEK_API_KEY!, "https://api.deepseek.com/chat/completions", env.DEEPSEEK_MODEL ?? "deepseek-chat", input, opts?.photoDataUrl);
-      else if (provider === "gemini") raw = await callGemini(env.GEMINI_API_KEY!, env.GEMINI_MODEL ?? "gemini-2.0-flash", input, opts?.photoDataUrl);
-      else raw = await callAnthropic(env.ANTHROPIC_API_KEY!, env.ANTHROPIC_MODEL ?? "claude-3-5-sonnet-latest", input, opts?.photoDataUrl);
+      if (provider === "openai") raw = await callOpenAiCompatible(env.OPENAI_API_KEY!, "https://api.openai.com/v1/chat/completions", env.OPENAI_MODEL ?? "gpt-4o-mini", buildPrompt(input), opts?.photoDataUrl);
+      else if (provider === "deepseek") raw = await callOpenAiCompatible(env.DEEPSEEK_API_KEY!, "https://api.deepseek.com/chat/completions", env.DEEPSEEK_MODEL ?? "deepseek-chat", buildPrompt(input), opts?.photoDataUrl);
+      else if (provider === "gemini") raw = await callGemini(env.GEMINI_API_KEY!, env.GEMINI_MODEL ?? "gemini-2.0-flash", buildPrompt(input), opts?.photoDataUrl);
+      else raw = await callAnthropic(env.ANTHROPIC_API_KEY!, env.ANTHROPIC_MODEL ?? "claude-3-5-sonnet-latest", buildPrompt(input), opts?.photoDataUrl);
 
       const parsed = llmDesignSchema.safeParse(raw);
       if (parsed.success) {
@@ -227,4 +231,89 @@ export async function generateDesignWithFallback(
   const output: DesignEngineOutput = { source: "rule-based", result: generateDesign(input, internalProducts, affiliateProducts) };
   cacheSet(cacheKey, output);
   return output;
+}
+
+
+// ==========================================================
+// FAZ 12 — Nokta revize (numaralı tek bölgeyi hedefleme).
+//
+// Kullanıcı tüm tasarımı baştan yapmak yerine NUMARALI bir bölgeyi (Zone A/B/C/D)
+// hedefler ve yalnızca o bölgeyi revize eder. LLM hedef bölgenin yüzdesini
+// kullanıcının isteğine göre ayarlar (ve tüm bölgelerin yüzdelerini 100'e
+// normalize eder). Herhangi bir hata/anahtar yokluğu → deterministik
+// reviseZonePercent fallback. Eşleştirme/maliyet her zaman deterministik
+// motordan gelir (generateDesignWithZones).
+// ==========================================================
+
+const llmReviseZoneSchema = z.object({
+  id: z.enum(["PLANTS", "SEEDS", "IRRIGATION", "ACCESSORIES"]),
+  areaPercent: z.number().min(0).max(100),
+});
+
+const llmReviseSchema = z.object({
+  zones: z.array(llmReviseZoneSchema).min(1).max(8),
+});
+
+function buildRevisePrompt(input: SpaceInput, currentZones: Zone[], targetZone: ZoneId, instruction: string): string {
+  return [
+    "Sen bir peyzaj mimarısın. Mevcut bir bahçe tasarımının YALNIZCA bir bölgesini revize edeceksin (diğer bölgeleri bozma).",
+    `Hedef bölge id: ${targetZone}. Kullanıcı isteği: ${instruction}`,
+    `Mevcut bölgeler (id + areaPercent): ${JSON.stringify(currentZones.map((z) => ({ id: z.id, areaPercent: z.areaPercent })))}`,
+    "Yalnızca JSON döndür. TÜM 4 bölgeyi (PLANTS, SEEDS, IRRIGATION, ACCESSORIES) güncellenmiş areaPercent değerleriyle döndür; toplam 100 olmalı.",
+    "Hedef bölgenin yüzdesini kullanıcının isteğine göre değiştir; diğer bölgeleri orantılı tut.",
+    '{"zones":[{"id":"PLANTS","areaPercent":30},{"id":"SEEDS","areaPercent":15},{"id":"IRRIGATION","areaPercent":25},{"id":"ACCESSORIES","areaPercent":30}]}',
+  ].join("\n");
+}
+
+function buildRevisedLayout(currentZones: Zone[], llmZones: { id: ZoneId; areaPercent: number }[]): ZoneLayoutItem[] {
+  const seen = new Set<ZoneId>();
+  const layout: ZoneLayoutItem[] = [];
+  for (const z of llmZones) {
+    layout.push({ id: z.id, areaPercent: z.areaPercent });
+    seen.add(z.id);
+  }
+  // LLM eksik bölge döndürdüyse mevcut yüzdeyle tamamla.
+  for (const z of currentZones) {
+    if (!seen.has(z.id)) layout.push({ id: z.id, areaPercent: z.areaPercent });
+  }
+  return layout;
+}
+
+/** Hedef bölgeyi kullanıcı isteğine göre revize eder; LLM dener, fallback deterministik. */
+export async function reviseZoneWithFallback(
+  input: SpaceInput,
+  currentZones: Zone[],
+  targetZone: ZoneId,
+  instruction: string,
+  internalProducts: InternalProductRef[],
+  affiliateProducts: AffiliateRef[],
+  opts?: DesignEngineOptions
+): Promise<DesignEngineOutput> {
+  const env = opts?.env ?? (process.env as LlmEnv);
+  const provider = resolveProvider(env);
+
+  if (provider) {
+    try {
+      let raw: unknown;
+      const prompt = buildRevisePrompt(input, currentZones, targetZone, instruction);
+      if (provider === "openai") raw = await callOpenAiCompatible(env.OPENAI_API_KEY!, "https://api.openai.com/v1/chat/completions", env.OPENAI_MODEL ?? "gpt-4o-mini", prompt);
+      else if (provider === "deepseek") raw = await callOpenAiCompatible(env.DEEPSEEK_API_KEY!, "https://api.deepseek.com/chat/completions", env.DEEPSEEK_MODEL ?? "deepseek-chat", prompt);
+      else if (provider === "gemini") raw = await callGemini(env.GEMINI_API_KEY!, env.GEMINI_MODEL ?? "gemini-2.0-flash", prompt);
+      else raw = await callAnthropic(env.ANTHROPIC_API_KEY!, env.ANTHROPIC_MODEL ?? "claude-3-5-sonnet-latest", prompt);
+
+      const parsed = llmReviseSchema.safeParse(raw);
+      if (parsed.success) {
+        const layout = buildRevisedLayout(currentZones, parsed.data.zones as { id: ZoneId; areaPercent: number }[]);
+        const zones = buildZonesFromLayout(input, layout);
+        const result = generateDesignWithZones(input, zones, internalProducts, affiliateProducts);
+        return { source: "llm", result };
+      }
+    } catch {
+      // ağ/timeout/parse hatası → deterministik fallback
+    }
+  }
+
+  const revisedZones = reviseZonePercent(currentZones, targetZone, instruction);
+  const result = generateDesignWithZones(input, revisedZones, internalProducts, affiliateProducts);
+  return { source: "rule-based", result };
 }

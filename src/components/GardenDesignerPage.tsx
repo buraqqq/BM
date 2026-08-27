@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { GardenPuzzleEditor } from "@/components/GardenPuzzleEditor";
 import {
   SPACE_TYPES,
   SPACE_TYPE_LABELS,
@@ -16,6 +17,7 @@ import {
   type Usage,
   type Budget,
   type DesignResult,
+  type SpaceInput,
 } from "@/lib/ai-designer-logic";
 
 function formatTL(n: number) {
@@ -26,6 +28,7 @@ interface DesignResponse {
   source: "rule-based" | "llm";
   result: DesignResult;
   visual: string;
+  input: SpaceInput;
 }
 
 // Web Speech API için minimal tip (lib.dom'da standart SpeechRecognition tipi yok).
@@ -291,7 +294,11 @@ export function GardenDesignerPage() {
           </div>
 
           {/* Mock görsel yerleşim (Visual AI fallback) */}
-          <div style={{ margin: "16px 0", borderRadius: 12, overflow: "hidden" }} dangerouslySetInnerHTML={{ __html: result.visual }} />
+          <GardenPuzzleEditor
+            zones={result.result.zones}
+            input={result.input}
+            onRecalculated={(data) => setResult((prev) => (prev ? { ...prev, source: "rule-based", result: data.result, visual: data.visual } : prev))}
+          />
 
           <h3>Bölgeleme (Puzzle)</h3>
           {result.result.zones.map((z) => (

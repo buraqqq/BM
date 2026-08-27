@@ -8,6 +8,10 @@ import {
   computeCostCard,
   buildCareGuide,
   reviseBom,
+  buildZonesFromLayout,
+  generateDesignWithZones,
+  reviseZonePercent,
+  REVISE_DELTA_PERCENT,
   DELIVERY_TYPES,
   type SpaceInput,
   type InternalProductRef,
@@ -149,5 +153,101 @@ describe("ai-designer — bakım rehberi", () => {
     const tips = buildCareGuide({ ...BASE_INPUT, windExposed: true });
     expect(tips.some((t) => t.includes("Rüzgâr"))).toBe(true);
     expect(tips.some((t) => t.includes("Akdeniz"))).toBe(true);
+  });
+});
+
+
+// ==========================================================
+// FAZ 12 — Puzzle düzenleme + nokta revize (saf fonksiyonlar)
+// ==========================================================
+describe("ai-designer — buildZonesFromLayout", () => {
+  it("verilen yüzdeleri 100'e normalize eder", () => {
+    const zones = buildZonesFromLayout(BASE_INPUT, [
+      { id: "PLANTS", areaPercent: 50 },
+      { id: "SEEDS", areaPercent: 50 },
+      { id: "IRRIGATION", areaPercent: 50 },
+      { id: "ACCESSORIES", areaPercent: 50 },
+    ]);
+    const sum = zones.reduce((s, z) => s + z.areaPercent, 0);
+    expect(Math.round(sum)).toBe(100);
+    expect(zones).toHaveLength(4);
+  });
+
+  it("sırayı korur (puzzle sıralaması)", () => {
+    const zones = buildZonesFromLayout(BASE_INPUT, [
+      { id: "ACCESSORIES", areaPercent: 40 },
+      { id: "PLANTS", areaPercent: 30 },
+      { id: "SEEDS", areaPercent: 20 },
+      { id: "IRRIGATION", areaPercent: 10 },
+    ]);
+    expect(zones.map((z) => z.id)).toEqual(["ACCESSORIES", "PLANTS", "SEEDS", "IRRIGATION"]);
+  });
+
+  it("areaSqm'yi gerçek alana göre hesaplar", () => {
+    // BASE_INPUT alanı 12 m²
+    const zones = buildZonesFromLayout(BASE_INPUT, [
+      { id: "PLANTS", areaPercent: 50 },
+      { id: "SEEDS", areaPercent: 50 },
+    ]);
+    const plants = zones.find((z) => z.id === "PLANTS")!;
+    expect(Math.round(plants.areaSqm)).toBe(6); // 12 * 50%
+  });
+});
+
+describe("ai-designer — generateDesignWithZones", () => {
+  it("özel yerleşimden BOM + maliyet üretir", () => {
+    const zones = buildZonesFromLayout(BASE_INPUT, [
+      { id: "PLANTS", areaPercent: 100 },
+      { id: "SEEDS", areaPercent: 0 },
+      { id: "IRRIGATION", areaPercent: 0 },
+      { id: "ACCESSORIES", areaPercent: 0 },
+    ]);
+    const result = generateDesignWithZones(BASE_INPUT, zones, [], []);
+    expect(result.items.length).toBeGreaterThan(0);
+    expect(result.cost.total).toBeGreaterThanOrEqual(0);
+    expect(result.zones[0].id).toBe("PLANTS");
+  });
+
+  it("alan ve careGuide tutarlı", () => {
+    const zones = generateZones(BASE_INPUT);
+    const result = generateDesignWithZones(BASE_INPUT, zones, [], []);
+    expect(result.areaSqm).toBe(12);
+    expect(result.careGuide.length).toBeGreaterThan(0);
+  });
+});
+
+describe("ai-designer — reviseZonePercent (nokta revize fallback)", () => {
+  it("büyütme komutu hedef bölgeyi artırır", () => {
+    const zones = generateZones(BASE_INPUT); // TERAS PLANTS = 25
+    const revised = reviseZonePercent(zones, "PLANTS", "Zone A'yı büyüt");
+    const plants = revised.find((z) => z.id === "PLANTS")!;
+    expect(plants.areaPercent).toBe(25 + REVISE_DELTA_PERCENT);
+  });
+
+  it("küçültme komutu hedef bölgeyi azaltır", () => {
+    const zones = generateZones(BASE_INPUT);
+    const revised = reviseZonePercent(zones, "PLANTS", "bitkileri azalt");
+    const plants = revised.find((z) => z.id === "PLANTS")!;
+    expect(plants.areaPercent).toBe(25 - REVISE_DELTA_PERCENT);
+  });
+
+  it("yalnızca hedef bölge değişir", () => {
+    const zones = generateZones(BASE_INPUT);
+    const revised = reviseZonePercent(zones, "PLANTS", "büyüt");
+    const seeds = revised.find((z) => z.id === "SEEDS")!;
+    expect(seeds.areaPercent).toBe(zones.find((z) => z.id === "SEEDS")!.areaPercent);
+  });
+
+  it("anahtar kelime yoksa yüzdeler korunur", () => {
+    const zones = generateZones(BASE_INPUT);
+    const revised = reviseZonePercent(zones, "PLANTS", "bambaşka bir istek");
+    expect(revised).toEqual(zones);
+  });
+
+  it("alt sınıra (0) kilitlenir", () => {
+    const zones = generateZones(BASE_INPUT).map((z) => (z.id === "SEEDS" ? { ...z, areaPercent: 5 } : z));
+    const revised = reviseZonePercent(zones, "SEEDS", "tohum alanını küçült");
+    const seeds = revised.find((z) => z.id === "SEEDS")!;
+    expect(seeds.areaPercent).toBe(0);
   });
 });

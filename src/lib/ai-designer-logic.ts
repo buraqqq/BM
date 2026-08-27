@@ -61,6 +61,8 @@ export interface SpaceInput {
 // ----------------------------------------------------------
 export type ZoneId = "PLANTS" | "SEEDS" | "IRRIGATION" | "ACCESSORIES";
 
+export const ZONE_IDS = ["PLANTS", "SEEDS", "IRRIGATION", "ACCESSORIES"] as const;
+
 export interface Zone {
   id: ZoneId;
   title: string;
@@ -344,9 +346,82 @@ export function computeCostCard(items: MatchedItem[]): CostCard {
 
 export function generateDesign(input: SpaceInput, internalProducts: InternalProductRef[], affiliateProducts: AffiliateRef[]): DesignResult {
   const zones = generateZones(input);
+  return generateDesignWithZones(input, zones, internalProducts, affiliateProducts);
+}
+
+// ----------------------------------------------------------
+// FAZ 12 — Puzzle (elle yerleşim) düzenleme desteği.
+//
+// Kullanıcı tasarımı "puzzle" gibi yeniden düzenleyebilir: bölge sırasını
+// değiştirir ve/veya alan yüzdelerini ayarlar. Bu fonksiyonlar verilen özel
+// yerleşimden deterministik Zone listesi + BOM + maliyet üretir (saf, testli).
+// ----------------------------------------------------------
+
+export interface ZoneLayoutItem {
+  id: ZoneId;
+  /** Bu bölgeye ayrılan alan yüzdesi (toplam 100'e normalize edilir). */
+  areaPercent: number;
+}
+
+/** Kullanıcı yerleşiminden Zone listesi üretir. Yüzdeler toplamı 100 olacak
+ *  şekilde normalize edilir; areaSqm gerçek alana göre yeniden hesaplanır. */
+export function buildZonesFromLayout(input: SpaceInput, layout: ZoneLayoutItem[]): Zone[] {
+  const area = computeArea(input);
+  const totalPercent = layout.reduce((sum, z) => sum + Math.max(0, z.areaPercent), 0);
+  const scale = totalPercent > 0 ? 100 / totalPercent : 0;
+
+  return layout.map((z) => {
+    const normalized = scale > 0 ? Math.round(z.areaPercent * scale * 10) / 10 : 0;
+    return {
+      id: z.id,
+      title: ZONE_LABELS[z.id],
+      description: zoneDescription(z.id, input),
+      areaPercent: normalized,
+      areaSqm: Math.round((area * normalized) / 100 * 10) / 10,
+    };
+  });
+}
+
+/** Özel bölge yerleşiminden tam tasarım (BOM + eşleştirme + maliyet) üretir. */
+export function generateDesignWithZones(
+  input: SpaceInput,
+  zones: Zone[],
+  internalProducts: InternalProductRef[],
+  affiliateProducts: AffiliateRef[]
+): DesignResult {
   const bom = generateBom(input, zones);
   const items = matchBomToCatalog(bom, internalProducts, affiliateProducts);
   return { areaSqm: computeArea(input), zones, bom, items, careGuide: buildCareGuide(input), cost: computeCostCard(items) };
+}
+
+// ----------------------------------------------------------
+// FAZ 12 — Nokta revize (numaralı tek bölgeyi hedefleme).
+//
+// Kullanıcı tüm tasarımı baştan yapmak yerine NUMARALI bir bölgeyi (Zone A/B/C/D)
+// hedefler ve yalnızca o bölgeyi revize eder. Deterministik fallback: komut
+// büyütme/küçültme anahtar kelimesi içeriyorsa hedef bölgenin yüzdesi
+// ayarlanır; aksi halde yüzdeler korunur. AI yolu (LLM) ayrıca açıklamayı ve
+// yüzdeyi kullanıcının isteğine göre değiştirebilir (bkz. ai-designer-llm.ts).
+// ----------------------------------------------------------
+
+export const REVISE_GROW_KEYWORDS = ["büyüt", "genişlet", "arttır", "artır", "büyü", "geniş"];
+export const REVISE_SHRINK_KEYWORDS = ["küçült", "daralt", "azalt", "küçü", "daral"];
+
+export const REVISE_DELTA_PERCENT = 10;
+
+/** Tek bölgenin yüzdesini komut kelimesine göre deterministik ayarlar (fallback). */
+export function reviseZonePercent(zones: Zone[], targetZone: ZoneId, instruction: string): Zone[] {
+  const norm = instruction.toLocaleLowerCase("tr-TR");
+  const grow = REVISE_GROW_KEYWORDS.some((k) => norm.includes(k));
+  const shrink = REVISE_SHRINK_KEYWORDS.some((k) => norm.includes(k));
+  if (!grow && !shrink) return zones;
+
+  const delta = grow ? REVISE_DELTA_PERCENT : -REVISE_DELTA_PERCENT;
+  return zones.map((z) => {
+    if (z.id !== targetZone) return z;
+    const next = Math.max(0, Math.min(100, z.areaPercent + delta));
+    return { ...z, areaPercent: Math.round(next * 10) / 10, description: `${z.description} (revize edildi)` };
+  });
 }
 
 // ----------------------------------------------------------
