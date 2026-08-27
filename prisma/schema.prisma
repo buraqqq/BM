@@ -1,7 +1,6 @@
 // ==========================================================
 // B&M Vourla — Prisma Schema (FAZ 1)
-// Veritabanı: SQLite (bkz. .env.example ve docs/database.md için
-// hosted Postgres/libSQL'e geçiş notları)
+// Veritabanı: PostgreSQL (Supabase) — FAZ 14. SQLite'tan geçiş yapıldı.
 // ==========================================================
 
 generator client {
@@ -9,7 +8,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 

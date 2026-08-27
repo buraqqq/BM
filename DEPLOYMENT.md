@@ -16,34 +16,26 @@
 
 ---
 
-## 2. Veritabanı: SQLite → hosted Postgres
+## 2. Veritabanı: Supabase PostgreSQL (FAZ 14'te geçiş TAMAMLANDI)
 
-Kalıcı disk sunmayan platformlara (Vercel, serverless) dağıtımda SQLite çalışmaz.
-Geçiş adımları:
+SQLite'tan hosted PostgreSQL'e geçiş yapıldı. Aktif yapılandırma:
 
-1. `prisma/schema.prisma` içindeki:
-   ```prisma
-   datasource db {
-     provider = "sqlite"
-     url      = env("DATABASE_URL")
-   }
-   ```
-   satırını şöyle değiştir:
-   ```prisma
-   datasource db {
-     provider = "postgresql"
-     url      = env("DATABASE_URL")
-   }
-   ```
-2. `DATABASE_URL`'i hosted Postgres bağlantı dizesiyle doldur
-   (Neon, Supabase, RDS vb.). Örnek: `postgresql://user:pass@host:5432/db?sslmode=require`.
-3. Migration'ları uygula: `npx prisma migrate deploy` (elle SQL yok — tüm migration'lar
-   `prisma/migrations/` altında version-controlled).
-4. Seed'leri çalıştır (idempotent): `npx tsx prisma/seed-admin.ts` + `npx tsx prisma/seed-garden-products.ts`.
+- **Provider:** `postgresql` (`prisma/schema.prisma`).
+- **Bağlantı:** Supabase **session pooler** (IPv4, port 5432):
+  ```
+  postgresql://postgres.<PROJE_REF>:<DB_SIFRE>@aws-0-<BOLGE>.pooler.supabase.com:5432/postgres
+  ```
+  - Bölge: `eu-central-1` (Frankfurt) → host `aws-0-eu-central-1.pooler.supabase.com`.
+  - ⚠️ Supabase **direkt** bağlantısı (`db.<ref>.supabase.co:5432`) bu projede IPv6-only
+    çözümlendiği için kullanılamaz — **pooler** kullanın.
+- **Migration:** `prisma/migrations/` altında TEK baseline migration
+  (`20260828000000_init`, PostgreSQL). Uygulama: `npx prisma migrate deploy`.
+- **Seed (idempotent, sırasıyla):** `seed.ts` → `seed-admin.ts` →
+  `seed-garden-categories.ts` → `seed-garden-products.ts` → `seed-affiliate.ts` →
+  `seed-affiliate-extra.ts`.
 
-> Not: Tüm "enum" alanlar bilinçli olarak `String` tutulur (SQLite native enum
-> desteklemediği için). Postgres'e geçince gerçek enum'a çevirmek **isteğe bağlıdır**,
-> zorunlu değildir. Şemanın geri kalanı değişmeden çalışır.
+> Not: Tüm "enum" alanlar bilinçli olarak `String` tutulur. PostgreSQL'de gerçek enum'a
+> çevirmek isteğe bağlıdır (zorunlu değil). Şemanın geri kalanı değişmeden çalışır.
 
 ---
 

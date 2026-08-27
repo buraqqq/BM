@@ -1,12 +1,12 @@
 # DEVAM DURUMU — B&M Vourla (Kaldığımız Yer)
 
 > Bu dosyayı okuduğunda projeye hâkim olup kaldığın yerden devam edebilirsin.
-> Son güncelleme: 2026-08-27 (FAZ 13 sonu).
+> Son güncelleme: 2026-08-28 (FAZ 14 sonu — Supabase PostgreSQL geçişi).
 
 ## Proje konumu & çalıştırma
 
 - **Klasör:** `C:\Users\pc\Desktop\BM-website\bm-vourla-app`
-- **Stack:** Next.js 14 (App Router) + TypeScript + Prisma + SQLite + NextAuth + Zod + Vitest
+- **Stack:** Next.js 14 (App Router) + TypeScript + Prisma + PostgreSQL (Supabase) + NextAuth + Zod + Vitest
 - **Kabuk:** PowerShell (Windows). Node 24, npm 11.
 
 ```powershell
@@ -42,14 +42,15 @@ npx tsx scripts/db-integrity-check.ts
 - **FAZ 11** admin analitik & performans dashboard'u (analytics-service: alarm istatistikleri + en çok alarm kurulan ürünler + e-posta teslimat başarı oranı + /api/admin/analytics + AdminAnalytics UI)
 - **FAZ 12** dokümantasyon + production hazırlığı (DEPLOYMENT.md deploy/env/cron/güvenlik rehberi)
 - **FAZ 13** alarm iptali soft-cancel (ProductAlert.status ACTIVE/CANCELLED) + cron servis-token (GET /api/cron/alerts + cron-auth.ts + Netlify Scheduled Function)
+- **FAZ 14** Supabase PostgreSQL geçişi (SQLite → hosted Postgres; session pooler + baseline migration + seed)
 
-**Git HEAD:** `53b1106` (son commit: FAZ 13 — alarm soft-cancel CANCELLED + cron servis-token).
+**Git HEAD:** FAZ 14 — Supabase PostgreSQL geçişi.
 
-## Veritabanı durumu (dev.db)
+## Veritabanı durumu (Supabase PostgreSQL)
 
-- 291 ürün (288 aktif) — FAZ 7'de 31 ürün eklendi (baseline 260 → 291).
+- 288 ürün (288 aktif) — FAZ 7'de 31 ürün eklendi (baseline 260 → 288).
 - 14 kategori (7 orijinal + 7 bahçe: bitki/tohum/sulama/hortum/saksi/toprak-gubre/alet).
-- 39 affiliate ürünü (`AffiliateProduct`: name/vendor/affiliateUrl/category/estimatedPrice/commissionRate).
+- 20 affiliate ürünü (`AffiliateProduct`: name/vendor/affiliateUrl/category/estimatedPrice/commissionRate).
 - Order tabloları boş (test verisi self-cleaning temizleniyor).
 
 ## Mimari kurallar (bozma)
@@ -63,7 +64,7 @@ npx tsx scripts/db-integrity-check.ts
 
 - `npx tsc --noEmit` → **0 hata** ✅
 - `npm test` → **288/288** (27 dosya) ✅
-- `npm run build` → **başarılı** (FAZ 13 sonrası doğrulandı).
+- `npm run build` → **başarılı** (FAZ 14 — Supabase PostgreSQL ile doğrulandı).
 
 ## Commit'lenmemiş durum
 
@@ -73,7 +74,7 @@ npx tsx scripts/db-integrity-check.ts
 
 - ✅ **Alarm cron'u** (FAZ 13): `GET /api/cron/alerts` servis-token ucu + Netlify Scheduled Function eklendi. Deploy sonrası `CRON_SECRET` env'ini ayarla (bkz. DEPLOYMENT.md Bölüm 5).
 - ✅ **ProductAlert CANCELLED** (FAZ 13): iptal artık soft-cancel (status=CANCELLED); admin analitik CANCELLED'ı gerçek sayar.
-- ⬜ **Production deploy**: `DEPLOYMENT.md` — kalıcı disk sunmayan platform (Vercel/Netlify) için SQLite → hosted Postgres (Neon/Supabase) geçişi ZORUNLU; `DATABASE_URL` tek satır değişikliği.
+- ✅ **Supabase PostgreSQL geçişi** (FAZ 14): provider `postgresql`, session pooler bağlantısı, baseline migration + seed uygulandı (288 ürün / 14 kategori / 20 affiliate / 1 admin).
 - ⬜ **Gerçek e-posta teslimatı**: `.env`'de `EMAIL_PROVIDER=RESEND` + `RESEND_API_KEY` + gerçek `EMAIL_FROM` ayarlanana kadar bildirimler CONSOLE'a düşer (`delivered:false` — dürüst mock).
 - ⬜ **Affiliate gerçek ürün linkleri**: hâlâ satıcı-arama URL'leri; admin'de gerçek ürün linklerine çevrilecek.
 
