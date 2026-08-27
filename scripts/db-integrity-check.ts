@@ -147,6 +147,35 @@ async function main() {
     if (!cart || cart.status !== "CONVERTED") findings.push(`order ${o.orderNumber} references non-converted cart`);
   }
 
+  // ---------------------------------------------------------------
+  // FAZ 7 — AffiliateProduct / AffiliateClick bütünlüğü.
+  // Tıklamalar ayrı tablo değil; AuditLog'da action="AFFILIATE_CLICK",
+  // entity="Affiliate", entityId=aff.id olarak tutulur (gerçek FK YOK).
+  // Bu yüzden tıklamaların geçerli bir affiliate ürününe işaret ettiği
+  // burada bağımsız olarak doğrulanır (orphan riski).
+  // ---------------------------------------------------------------
+  const affiliateProductIds = new Set((await prisma.affiliateProduct.findMany({ select: { id: true } })).map((a) => a.id));
+
+  const affiliateClicks = await prisma.auditLog.findMany({
+    where: { action: "AFFILIATE_CLICK" },
+    select: { id: true, entityId: true },
+  });
+  affiliateClicks
+    .filter((c) => c.entityId === null || !affiliateProductIds.has(c.entityId))
+    .forEach((c) => findings.push(`orphan AffiliateClick (entityId): ${c.id} -> ${c.entityId ?? "(null)"}`));
+
+  const allAffiliates = await prisma.affiliateProduct.findMany({
+    select: { id: true, name: true, vendor: true, affiliateUrl: true, category: true, commissionRate: true, estimatedPrice: true },
+  });
+  for (const a of allAffiliates) {
+    if (!a.name.trim()) findings.push(`AffiliateProduct ${a.id}: empty name`);
+    if (!a.vendor.trim()) findings.push(`AffiliateProduct ${a.id}: empty vendor`);
+    if (!a.affiliateUrl.trim()) findings.push(`AffiliateProduct ${a.id}: empty affiliateUrl`);
+    if (!a.category.trim()) findings.push(`AffiliateProduct ${a.id}: empty category`);
+    if (a.commissionRate !== null && (Number(a.commissionRate) < 0 || Number(a.commissionRate) > 100)) findings.push(`AffiliateProduct ${a.id}: commissionRate out of range (${a.commissionRate})`);
+    if (a.estimatedPrice !== null && Number(a.estimatedPrice) < 0) findings.push(`AffiliateProduct ${a.id}: negative estimatedPrice (${a.estimatedPrice})`);
+  }
+
   // --- Özet ---
   const counts = {
     products: await prisma.product.count(),
@@ -166,6 +195,8 @@ async function main() {
     orderItems: await prisma.orderItem.count(),
     orderAddressSnapshots: await prisma.orderAddressSnapshot.count(),
     orderStatusHistory: await prisma.orderStatusHistory.count(),
+    affiliateProducts: await prisma.affiliateProduct.count(),
+    affiliateClicks: await prisma.auditLog.count({ where: { action: "AFFILIATE_CLICK" } }),
   };
 
   console.log("=== DB Integrity Check ===");

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   SPACE_TYPES,
   SPACE_TYPE_LABELS,
@@ -26,6 +26,17 @@ interface DesignResponse {
   source: "rule-based" | "llm";
   result: DesignResult;
   visual: string;
+}
+
+// Web Speech API için minimal tip (lib.dom'da standart SpeechRecognition tipi yok).
+interface SpeechRecognitionLike {
+  lang: string;
+  interimResults: boolean;
+  maxAlternatives: number;
+  onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
+  onend: (() => void) | null;
+  onerror: (() => void) | null;
+  start: () => void;
 }
 
 const LIGHT_LABELS: Record<Light, string> = { TAM_GUNES: "Tam Güneş", YARI_GOLGE: "Yarı Gölge", GOLGE: "Gölge" };
@@ -56,9 +67,53 @@ export function GardenDesignerPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cartMsg, setCartMsg] = useState<string | null>(null);
+  const [photoDataUrl, setPhotoDataUrl] = useState<string | null>(null);
+  const [voiceTranscript, setVoiceTranscript] = useState("");
+  const [voiceListening, setVoiceListening] = useState(false);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
+  const galleryRef = useRef<HTMLInputElement>(null);
 
   function toggleUsage(u: Usage) {
     setForm((f) => ({ ...f, usages: f.usages.includes(u) ? f.usages.filter((x) => x !== u) : [...f.usages, u] }));
+  }
+
+  function handlePhotoFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setPhotoDataUrl(typeof reader.result === "string" ? reader.result : null);
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  }
+
+  function clearPhoto() {
+    setPhotoDataUrl(null);
+  }
+
+  function startVoice() {
+    const w = window as unknown as { SpeechRecognition?: new () => SpeechRecognitionLike; webkitSpeechRecognition?: new () => SpeechRecognitionLike };
+    const SR = w.SpeechRecognition ?? w.webkitSpeechRecognition;
+    if (!SR) {
+      setVoiceError("Tarayıcınız sesli komutu desteklemiyor.");
+      return;
+    }
+    const rec = new SR();
+    rec.lang = "tr-TR";
+    rec.interimResults = false;
+    rec.maxAlternatives = 1;
+    rec.onresult = (event) => {
+      const transcript = event.results[0]?.[0]?.transcript ?? "";
+      if (transcript) setVoiceTranscript((t) => (t ? t + " " + transcript : transcript));
+    };
+    rec.onend = () => setVoiceListening(false);
+    rec.onerror = () => {
+      setVoiceListening(false);
+      setVoiceError("Ses alınamadı; yazılı komutu kullanabilirsiniz.");
+    };
+    setVoiceError(null);
+    setVoiceListening(true);
+    rec.start();
   }
 
   async function submit() {
@@ -189,8 +244,35 @@ export function GardenDesignerPage() {
           </div>
 
           <div>
+            <label>Alan Fotoğrafı (opsiyonel) — kamera veya galeri</label>
+            <input ref={cameraRef} type="file" accept="image/*" capture="environment" style={{ display: "none" }} onChange={handlePhotoFile} />
+            <input ref={galleryRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handlePhotoFile} />
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginTop: 6 }}>
+              <button type="button" className="btn btn-primary" style={{ padding: "6px 12px", fontSize: "0.8rem" }} onClick={() => cameraRef.current?.click()}>
+                <i className="fas fa-camera" /> Kamera
+              </button>
+              <button type="button" className="btn btn-primary" style={{ padding: "6px 12px", fontSize: "0.8rem" }} onClick={() => galleryRef.current?.click()}>
+                <i className="fas fa-images" /> Galeri
+              </button>
+              {photoDataUrl && (
+                <>
+                  <img src={photoDataUrl} alt="Alan fotoğrafı" style={{ width: 72, height: 54, objectFit: "cover", borderRadius: 8 }} />
+                  <button type="button" className="btn btn-primary" style={{ padding: "6px 12px", fontSize: "0.8rem", opacity: 0.7 }} onClick={clearPhoto}>Kaldır</button>
+                </>
+              )}
+            </div>
+          </div>
+
+          <div>
             <label>Sesli / Yazılı Komut (opsiyonel) — ör. "güney, gölge, premium bostan"</label>
-            <input value={form.textCommand} onChange={(e) => setForm({ ...form, textCommand: e.target.value })} placeholder="İsteğinizi yazın…" />
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginTop: 6 }}>
+              <button type="button" className="btn btn-primary" style={{ padding: "6px 12px", fontSize: "0.8rem" }} onClick={startVoice} disabled={voiceListening}>
+                <i className="fas fa-microphone" /> {voiceListening ? "Dinliyor…" : "Sesli Komut"}
+              </button>
+              {voiceTranscript && <span className="account-sub" style={{ margin: 0 }}>“{voiceTranscript}”</span>}
+              {voiceError && <span className="account-error" style={{ margin: 0 }}>{voiceError}</span>}
+            </div>
+            <input value={form.textCommand} onChange={(e) => setForm({ ...form, textCommand: e.target.value })} placeholder="İsteğinizi yazın…" style={{ marginTop: 8 }} />
           </div>
 
           <button className="btn btn-primary" type="button" onClick={submit} disabled={loading} style={{ justifyContent: "center", alignSelf: "flex-start", marginTop: 14 }}>

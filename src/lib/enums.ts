@@ -224,5 +224,18 @@ export const AUDIT_ACTIONS = [
   "ORDER_PAYMENT_STATUS_UPDATE",
   "AFFILIATE_CLICK",
   "AI_DESIGN_GENERATED",
+  "ALERT_TRIGGERED",
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
+
+// ----------------------------------------------------------
+// FAZ 9 — Stok & Fiyat Alarmları.
+// SQLite native enum desteklemediği için alertType String tutulur; izin
+// verilen değerler burada tek kaynak olarak tanımlanır (bkz. prisma
+// schema.prisma ProductAlert modeli + src/lib/alerts/alert-service.ts).
+//   STOCK_RESTOCK : düşük/tükenmiş stoğun yenilenmesi (quantity > 0)
+//   PRICE_DROP    : final fiyatın kullanıcının hedef fiyatına düşmesi
+//   BACK_IN_STOCK : tükenmiş (OUT_OF_STOCK) ürünün tekrar stoğa girmesi
+// ----------------------------------------------------------
+export const ALERT_TYPES = ["STOCK_RESTOCK", "PRICE_DROP", "BACK_IN_STOCK"] as const;
+export type AlertType = (typeof ALERT_TYPES)[number];

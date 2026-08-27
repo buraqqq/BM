@@ -110,8 +110,10 @@ export function generateMockVisualLayout(zones: Zone[]): string {
   const rects: string[] = [];
   for (const z of zones) {
     const w = Math.round((width * z.areaPercent) / 100);
-    rects.push(`<rect x="${x}" y="0" width="${w}" height="${height}" fill="${ZONE_COLORS[z.id]}" opacity="0.75"/>`);
-    rects.push(`<text x="${x + w / 2}" y="${height / 2}" fill="#fff" font-size="13" font-family="Arial" text-anchor="middle">${ZONE_LABELS[z.id].split("—")[1]?.trim() ?? z.id}</text>`);
+    const color = ZONE_COLORS[z.id] ?? "#666666";
+    const label = (ZONE_LABELS[z.id]?.split("—")[1]?.trim()) || z.id;
+    rects.push(`<rect x="${x}" y="0" width="${w}" height="${height}" fill="${color}" opacity="0.75"/>`);
+    rects.push(`<text x="${x + w / 2}" y="${height / 2}" fill="#fff" font-size="13" font-family="Arial" text-anchor="middle">${label}</text>`);
     x += w;
   }
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><rect width="${width}" height="${height}" fill="#14100d"/>${rects.join("")}</svg>`;

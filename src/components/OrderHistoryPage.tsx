@@ -69,6 +69,7 @@ export function OrderHistoryPage() {
         <a href="/hesabim">Profilim</a>
         <a href="/hesabim/adresler">Adreslerim</a>
         <a className="active" href="/hesabim/siparislerim">Siparişlerim</a>
+        <a href="/hesabim/alarmlar">Alarmlarım</a>
         <a href="/sepet">Sepetim</a>
       </div>
 

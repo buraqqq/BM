@@ -106,6 +106,7 @@ export function AccountProfile() {
         </a>
         <a href="/hesabim/adresler">Adreslerim</a>
         <a href="/hesabim/siparislerim">SipariÅŸlerim</a>
+        <a href="/hesabim/alarmlar">Alarmlarım</a>
         <a href="/sepet">Sepetim</a>
         <button
           onClick={async () => {

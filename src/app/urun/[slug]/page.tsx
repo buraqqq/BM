@@ -5,6 +5,7 @@ import { MobileTabBar } from "@/components/MobileTabBar";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { ProductCard, type ProductCardProduct } from "@/components/ProductCard";
 import { QuantityAddToCart } from "@/components/QuantityAddToCart";
+import { ProductAlertButtons } from "@/components/ProductAlertButtons";
 import { JsonLd } from "@/components/JsonLd";
 import { buildProductJsonLd, buildBreadcrumbJsonLd } from "@/lib/structured-data";
 import { buildProductBreadcrumb, type BreadcrumbCategory } from "@/lib/breadcrumb";
@@ -224,6 +225,9 @@ export default async function ProductPage({ params }: { params: { slug: string }
               {/* FAZ 4A — Bölüm 12/14: gerçek sepete ekleme (miktar seçici) */}
               <QuantityAddToCart productId={product.id} inStock={product.inStock} />
               <div style={{ marginBottom: 10 }} />
+
+              {/* FAZ 9 — stok/fiyat alarmı butonları */}
+              <ProductAlertButtons productId={product.id} inStock={product.inStock} currentPrice={product.price.final} />
 
               {product.description && (
                 <div style={{ marginBottom: 24 }}>

@@ -72,6 +72,7 @@ model User {
   addresses Address[]
   carts     Cart[]
   orders    Order[]
+  alerts    ProductAlert[]
 
   @@map("users")
 }
@@ -404,6 +405,7 @@ model Product {
   attributeValues  ProductAttributeValue[]
   cartItems        CartItem[]
   orderItems       OrderItem[]
+  alerts           ProductAlert[]
 
   @@index([categoryId])
   @@index([isActive])
@@ -726,4 +728,33 @@ model AffiliateProduct {
 
   @@index([category])
   @@map("affiliate_products")
+}
+
+// ----------------------------------------------------------
+// FAZ 9 — Stok & Fiyat Alarmları.
+//
+// Kullanıcılar bir ürün için stok/fiyat bildirimi kurabilir. Alert hem
+// STOCK_RESTOCK/BACK_IN_STOCK (stoğa geri gelme) hem PRICE_DROP (fiyatın
+// hedef fiyatın altına inmesi) için kullanılır. alertType String tutulur
+// (SQLite native enum yok; izin verilen değerler src/lib/enums.ts -> ALERT_TYPES).
+// targetPrice yalnızca PRICE_DROP için anlamlıdır (opsiyonel).
+// isTriggered: alarm tetiklendiğinde true olur — aynı alarmın tekrar tekrar
+// tetiklenmesini önler.
+// ----------------------------------------------------------
+
+model ProductAlert {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  alertType   String // STOCK_RESTOCK | PRICE_DROP | BACK_IN_STOCK (bkz. enums.ts)
+  targetPrice Decimal? // PRICE_DROP hedef fiyatı (TL)
+  isTriggered Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+  @@index([productId, alertType, isTriggered])
+  @@map("product_alerts")
 }

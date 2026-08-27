@@ -37,6 +37,8 @@ const spaceInputSchema = z.object({
   usages: z.array(z.enum(USAGES)).min(1),
   budget: z.enum(BUDGETS),
   textCommand: z.string().max(1000).optional(),
+  voiceTranscript: z.string().max(1000).optional(),
+  photoDataUrl: z.string().max(4_000_000).refine((v) => v.startsWith("data:image/"), { message: "photoDataUrl bir data URL (image) olmalı" }).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -45,8 +47,9 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: "VALIDATION_ERROR", details: parsed.error.flatten() }, { status: 422 });
   }
-  const { textCommand, ...rawInput } = parsed.data;
-  const input = applyCommand(rawInput, textCommand);
+  const { textCommand, voiceTranscript, photoDataUrl, ...rawInput } = parsed.data;
+  // Yazılı komut + sesli transkript aynı kural-tabanlı parser'dan geçer (ses = metin).
+  const input = applyCommand(applyCommand(rawInput, textCommand), voiceTranscript);
 
   const [products, affiliateProducts, activeCampaigns] = await Promise.all([
     prisma.product.findMany({ where: { isActive: true }, include: { category: true, inventory: true } }),
@@ -74,7 +77,7 @@ export async function POST(req: NextRequest) {
     estimatedPrice: a.estimatedPrice !== null ? Number(a.estimatedPrice) : null,
   }));
 
-  const output = await generateDesignWithFallback(input, internalProducts, affiliateRefs);
+  const output = await generateDesignWithFallback(input, internalProducts, affiliateRefs, { photoDataUrl });
   const visual = generateMockVisualLayout(output.result.zones);
 
   await writeAuditLog({

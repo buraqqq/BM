@@ -54,7 +54,7 @@ export function resolveProvider(env: LlmEnv): LlmProvider | null {
 
 // ---- Strict JSON şeması (LLM çıktısı zod ile doğrulanır) ----
 const llmZoneSchema = z.object({
-  id: z.string().min(1),
+  id: z.enum(["PLANTS", "SEEDS", "IRRIGATION", "ACCESSORIES"]),
   title: z.string().min(1),
   areaPercent: z.number().min(0).max(100),
   areaSqm: z.number().min(0),
@@ -93,10 +93,11 @@ function cacheSet(key: string, value: DesignEngineOutput): void {
 
 function buildPrompt(input: SpaceInput): string {
   return [
-    "Sen bir peyzaj mimarısın. Verilen alanı 4 bölgeye ayır ve ihtiyaç listesi üret.",
+    "Sen bir peyzaj mimarısın. Verilen alanı tam 4 bölgeye ayır ve ihtiyaç listesi üret.",
+    "Her bölgenin 'id' alanı YALNIZCA şu dört değerden biri olmalı: PLANTS, SEEDS, IRRIGATION, ACCESSORIES (başka değer KULLANMA).",
     "YALNIZCA şu şemada JSON döndür (başka metin YAZMA):",
-    '{"zones":[{"id":"PLANTS|SEEDS|IRRIGATION|ACCESSORIES","title":"...","areaPercent":25,"areaSqm":3.0}],"bom":[{"kind":"bitki|tohum|toprak|saksi|hortum|sulama|gubre|alet|cim|mobilya|aydinlatma|dekor","label":"...","quantity":5,"unit":"adet","note":"..."}]}',
-    "Zone yüzdelerinin toplamı 100 olmalı.",
+    '{"zones":[{"id":"PLANTS","title":"...","areaPercent":25,"areaSqm":3.0}],"bom":[{"kind":"bitki","label":"...","quantity":5,"unit":"adet","note":"..."}]}',
+    "Dört bölgenin 'id' değerleri PLANTS, SEEDS, IRRIGATION, ACCESSORIES olarak birer kez geçmeli ve zone yüzdelerinin toplamı 100 olmalı.",
     `Girdi: ${JSON.stringify({ spaceType: input.spaceType, areaSqm: computeArea(input), facade: input.facade, light: input.light, climate: input.climate, windExposed: input.windExposed, usages: input.usages, budget: input.budget })}`,
   ].join("\n");
 }

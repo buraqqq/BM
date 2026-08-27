@@ -131,6 +131,7 @@ export function AddressManager() {
           Adreslerim
         </a>
         <a href="/hesabim/siparislerim">SipariÅŸlerim</a>
+        <a href="/hesabim/alarmlar">Alarmlarım</a>
         <a href="/sepet">Sepetim</a>
       </div>
 
