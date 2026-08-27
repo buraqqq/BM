@@ -4,6 +4,7 @@
 # Not: Netlify build ortamı kalıcı disk sunmadığı için SQLite KULLANILAMAZ.
 # Deploy öncesi prisma/schema.prisma'daki datasource'u "postgresql" yapıp
 # DATABASE_URL'i hosted Postgres'e (Neon/Supabase) çevirin (bkz. DEPLOYMENT.md).
+# Alarm cron'u: netlify/functions/alerts-trigger.mjs (scheduled function) her 15 dk'da /api/cron/alerts'ı çağırır; CRON_SECRET env'i gereklidir (bkz. DEPLOYMENT.md Bölüm 5).
 # ==========================================================
 
 [build]

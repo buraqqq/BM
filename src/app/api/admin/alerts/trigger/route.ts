@@ -23,7 +23,7 @@ export async function POST(req: Request) {
 
     await writeAuditLog({
       adminUserId: auth.session.user.id,
-      action: "ALERT_TRIGGERED",
+      action: "ALERT_SCAN",
       entity: "ProductAlert",
       metadata: {
         triggerMode: "manual_cron",

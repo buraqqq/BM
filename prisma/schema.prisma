@@ -751,10 +751,12 @@ model ProductAlert {
   alertType   String // STOCK_RESTOCK | PRICE_DROP | BACK_IN_STOCK (bkz. enums.ts)
   targetPrice Decimal? // PRICE_DROP hedef fiyatı (TL)
   isTriggered Boolean  @default(false)
+  status      String   @default("ACTIVE") // ACTIVE | CANCELLED (bkz. enums.ts ALERT_STATUSES)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   @@index([userId])
   @@index([productId, alertType, isTriggered])
+  @@index([status])
   @@map("product_alerts")
 }

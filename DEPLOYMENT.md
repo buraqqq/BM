@@ -66,6 +66,7 @@ Tam liste ve açıklamalar `.env.example` içindedir. Production için kritik ol
 | `EMAIL_PROVIDER` | Hayır (`CONSOLE`) | `CONSOLE` \| `MOCK` \| `RESEND` |
 | `RESEND_API_KEY` | Yalnızca `EMAIL_PROVIDER=RESEND` | Resend API anahtarı |
 | `EMAIL_FROM` | Yalnızca RESEND | Doğrulanmış gönderici adresi (ör. `noreply@bmvourla.com`) |
+| `CRON_SECRET` | Yalnızca cron | Harici cron servislerinin `/api/cron/alerts` ucunu çağırabilmesi için (bkz. Bölüm 5) |
 
 > `NEXT_PUBLIC_` öneki olmayan hiçbir değişken tarayıcıya sızmaz (Next.js kuralı).
 > Sırları dağıtım platformunun kendi secret yönetimine girin; `.env` dosyasını
@@ -127,25 +128,23 @@ Netlify'a özel adımlar:
 
 `checkAndTriggerAlerts()` bekleyen stok/fiyat alarmlarını tarar, tetiklenenlere
 e-posta gönderir ve sonucu AuditLog'a yazar. **Uygulama içinde gerçek bir
-scheduler YOK** (bkz. `src/lib/pricing.ts`'teki "aktiflik okuma anında türetilir"
-kararı) — tetikleme şu yollarla yapılır:
+scheduler YOK** — tetikleme şu yollarla yapılır:
 
 - **Manuel (admin):** `POST /api/admin/alerts/trigger` (admin oturumu gerekli).
-- **Harici cron:** Bu endpoint'i periyodik çağıran bir job kurun:
-  - **Vercel Cron Jobs** (`vercel.json`):
-    ```json
-    {
-      "crons": [
-        { "path": "/api/admin/alerts/trigger", "schedule": "*/15 * * * *" }
-      ]
-    }
-    ```
-    > Not: Endpoint `requireAdmin` korumalıdır. Vercel Cron'un kimlik doğrulamalı
-    > bir uca istek atabilmesi için ayrı bir servis-token mekanizması eklenmeli
-    > (bu FAZ'da eklenmedi) ya da cron'u GitHub Actions / uptime-ping servisiyle
-    > yönetin.
-  - **GitHub Actions:** `workflow_dispatch` veya `schedule` ile `curl -X POST
-    https://<domain>/api/admin/alerts/trigger` (auth eklenmeli).
+- **Cron (servis-token korumalı):** `GET /api/cron/alerts` — harici cron
+  servisleri bu uca `Authorization: Bearer <CRON_SECRET>` başlığıyla istek atar.
+  `CRON_SECRET` env'i ayarlanmadıysa uç 503 döner (fail-closed). Doğrulama
+  `crypto.timingSafeEqual` ile yapılır (bkz. `src/lib/cron-auth.ts`).
+
+Kurulum (önerilen: Netlify Scheduled Function):
+
+- Repo'daki `netlify/functions/alerts-trigger.mjs` her 15 dakikada bir
+  `/api/cron/alerts` ucunu otomatik çağırır. Netlify UI → Environment variables
+  bölümüne `CRON_SECRET` ekleyin (ör. `openssl rand -base64 32`).
+- Alternatif (GitHub Actions / cron-job.org / uptime-ping):
+  ```bash
+  curl -H "Authorization: Bearer $CRON_SECRET" https://<domain>/api/cron/alerts
+  ```
 
 Önerilen cadans: 15 dakikada bir (stok/fiyat değişimi bildirimleri için makul).
 

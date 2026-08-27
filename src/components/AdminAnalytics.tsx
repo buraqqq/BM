@@ -97,6 +97,10 @@ export function AdminAnalytics() {
               <div className="num">{data.alerts.byStatus.triggered}</div>
               <div className="label">Tetiklenen Alarm</div>
             </div>
+            <div className="stat-card" style={{ borderLeftColor: "#842029" }}>
+              <div className="num">{data.alerts.byStatus.cancelled}</div>
+              <div className="label">İptal Edilen Alarm</div>
+            </div>
             <div className="stat-card" style={{ borderLeftColor: "#1565C0" }}>
               <div className="num">{data.notifications.successRate === null ? "—" : `%${data.notifications.successRate}`}</div>
               <div className="label">E-posta Teslimat Başarısı</div>

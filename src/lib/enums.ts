@@ -225,6 +225,7 @@ export const AUDIT_ACTIONS = [
   "AFFILIATE_CLICK",
   "AI_DESIGN_GENERATED",
   "ALERT_TRIGGERED",
+  "ALERT_SCAN",
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
@@ -239,3 +240,8 @@ export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 // ----------------------------------------------------------
 export const ALERT_TYPES = ["STOCK_RESTOCK", "PRICE_DROP", "BACK_IN_STOCK"] as const;
 export type AlertType = (typeof ALERT_TYPES)[number];
+
+// FAZ 13 — Alarm durumu: ACTIVE | CANCELLED. İptal artık kalıcı silme DEĞİL,
+// soft-cancel (status=CANCELLED) — CANCELLED istatistiği bu sayede gerçek olur.
+export const ALERT_STATUSES = ["ACTIVE", "CANCELLED"] as const;
+export type AlertStatus = (typeof ALERT_STATUSES)[number];

@@ -8,11 +8,10 @@ import { prisma } from "@/lib/prisma";
 // (bkz. src/lib/services/analytics.service.ts: saf compute + prisma wrapper).
 //
 // DÜRÜSTLÜK:
-// - Alarm durum dağılımı gerçek şemadan türetilir: `isTriggered=false` →
-//   PENDING, `isTriggered=true` → TRIGGERED. `cancelled` HER ZAMAN 0'dır çünkü
-//   şemada CANCELLED durumu YOKTUR — iptal edilen alarmlar DELETE ile kalıcı
-//   silinir (bkz. src/lib/alerts/alert-service.ts deleteAlert). Uydurma bir
-//   CANCELLED sayısı üretilmez.
+// - Alarm durum dağılımı gerçek şemadan türetilir: `status=CANCELLED` →
+//   CANCELLED, aksi halde `isTriggered=false` → PENDING, `isTriggered=true` →
+//   TRIGGERED. İptal artık soft-cancel'dir (bkz. alert-service.ts cancelAlert),
+//   bu yüzden CANCELLED sayısı gerçek veriden gelir, uydurma değildir.
 // - Bildirim başarı oranı AuditLog'daki "ALERT_TRIGGERED" kayıtlarının
 //   metadata.delivered alanından hesaplanır; veri yoksa null döner.
 // ==========================================================
@@ -66,7 +65,7 @@ export interface AdminAnalytics {
 const ALERT_TYPE_KEYS = ["STOCK_RESTOCK", "PRICE_DROP", "BACK_IN_STOCK"] as const;
 
 /** Ham alarm satırlarından toplam + tip/durum dağılımı üretir. */
-export function computeAlertStats(rows: { alertType: string; isTriggered: boolean }[]): AlertStats {
+export function computeAlertStats(rows: { alertType: string; isTriggered: boolean; status: string }[]): AlertStats {
   const byType: AlertTypeCounts = { STOCK_RESTOCK: 0, PRICE_DROP: 0, BACK_IN_STOCK: 0 };
   const byStatus: AlertStatusCounts = { pending: 0, triggered: 0, cancelled: 0 };
 
@@ -74,7 +73,8 @@ export function computeAlertStats(rows: { alertType: string; isTriggered: boolea
     if ((ALERT_TYPE_KEYS as readonly string[]).includes(row.alertType)) {
       byType[row.alertType as keyof AlertTypeCounts] += 1;
     }
-    if (row.isTriggered) byStatus.triggered += 1;
+    if (row.status === "CANCELLED") byStatus.cancelled += 1;
+    else if (row.isTriggered) byStatus.triggered += 1;
     else byStatus.pending += 1;
   }
 
@@ -127,7 +127,7 @@ export function computeNotificationStats(logs: { metadataJson: string | null }[]
 /** Toplam alarm sayısı + tip/durum dağılımı. */
 export async function getAlertStats(): Promise<AlertStats> {
   const rows = await prisma.productAlert.findMany({
-    select: { alertType: true, isTriggered: true },
+    select: { alertType: true, isTriggered: true, status: true },
   });
   return computeAlertStats(rows);
 }

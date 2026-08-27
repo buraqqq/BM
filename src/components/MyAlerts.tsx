@@ -13,6 +13,7 @@ interface AlertItem {
   alertType: string;
   targetPrice: number | null;
   isTriggered: boolean;
+  status: string;
   createdAt: string;
 }
 
@@ -115,14 +116,18 @@ export function MyAlerts() {
                   </div>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                  {a.isTriggered ? (
+                  {a.status === "CANCELLED" ? (
+                    <span className="badge badge-gray">İptal edildi</span>
+                  ) : a.isTriggered ? (
                     <span className="badge badge-green">Tetiklendi</span>
                   ) : (
                     <span className="badge">Bekliyor</span>
                   )}
-                  <button type="button" className="btn btn-white" style={{ padding: "6px 14px", fontSize: "0.8rem" }} onClick={() => handleDelete(a.id)} disabled={deletingId === a.id}>
-                    {deletingId === a.id ? "İptal ediliyor…" : "İptal Et"}
-                  </button>
+                  {a.status !== "CANCELLED" && (
+                    <button type="button" className="btn btn-white" style={{ padding: "6px 14px", fontSize: "0.8rem" }} onClick={() => handleDelete(a.id)} disabled={deletingId === a.id}>
+                      {deletingId === a.id ? "İptal ediliyor…" : "İptal Et"}
+                    </button>
+                  )}
                 </div>
               </div>
             ))}

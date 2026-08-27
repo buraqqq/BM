@@ -11,35 +11,39 @@ describe("analytics-service — computeAlertStats", () => {
 
   it("tip dağılımını doğru sayar", () => {
     const stats = computeAlertStats([
-      { alertType: "PRICE_DROP", isTriggered: false },
-      { alertType: "PRICE_DROP", isTriggered: true },
-      { alertType: "STOCK_RESTOCK", isTriggered: false },
-      { alertType: "BACK_IN_STOCK", isTriggered: false },
+      { alertType: "PRICE_DROP", isTriggered: false, status: "ACTIVE" },
+      { alertType: "PRICE_DROP", isTriggered: true, status: "ACTIVE" },
+      { alertType: "STOCK_RESTOCK", isTriggered: false, status: "ACTIVE" },
+      { alertType: "BACK_IN_STOCK", isTriggered: false, status: "ACTIVE" },
     ]);
     expect(stats.total).toBe(4);
     expect(stats.byType).toEqual({ STOCK_RESTOCK: 1, PRICE_DROP: 2, BACK_IN_STOCK: 1 });
   });
 
-  it("durum dağılımını isTriggered'a göre ayırır", () => {
+  it("durum dağılımını status + isTriggered'a göre ayırır", () => {
     const stats = computeAlertStats([
-      { alertType: "PRICE_DROP", isTriggered: false },
-      { alertType: "PRICE_DROP", isTriggered: true },
-      { alertType: "STOCK_RESTOCK", isTriggered: true },
+      { alertType: "PRICE_DROP", isTriggered: false, status: "ACTIVE" },
+      { alertType: "PRICE_DROP", isTriggered: true, status: "ACTIVE" },
+      { alertType: "STOCK_RESTOCK", isTriggered: true, status: "ACTIVE" },
+      { alertType: "BACK_IN_STOCK", isTriggered: false, status: "CANCELLED" },
     ]);
     expect(stats.byStatus.pending).toBe(1);
     expect(stats.byStatus.triggered).toBe(2);
+    expect(stats.byStatus.cancelled).toBe(1);
   });
 
-  it("cancelled her zaman 0'dır (şemada CANCELLED durumu yok)", () => {
+  it("CANCELLED durumu iptal edilmiş alarmları sayar", () => {
     const stats = computeAlertStats([
-      { alertType: "PRICE_DROP", isTriggered: false },
-      { alertType: "PRICE_DROP", isTriggered: true },
+      { alertType: "PRICE_DROP", isTriggered: false, status: "CANCELLED" },
+      { alertType: "STOCK_RESTOCK", isTriggered: false, status: "CANCELLED" },
     ]);
-    expect(stats.byStatus.cancelled).toBe(0);
+    expect(stats.byStatus.cancelled).toBe(2);
+    expect(stats.byStatus.pending).toBe(0);
+    expect(stats.byStatus.triggered).toBe(0);
   });
 
   it("bilinmeyen alertType tip sayacına girmez ama total'e girer", () => {
-    const stats = computeAlertStats([{ alertType: "BOGUS", isTriggered: false }]);
+    const stats = computeAlertStats([{ alertType: "BOGUS", isTriggered: false, status: "ACTIVE" }]);
     expect(stats.total).toBe(1);
     expect(stats.byType).toEqual({ STOCK_RESTOCK: 0, PRICE_DROP: 0, BACK_IN_STOCK: 0 });
   });

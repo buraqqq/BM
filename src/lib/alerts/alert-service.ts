@@ -91,7 +91,7 @@ export async function createAlert(input: AlertCreateInput): Promise<{ alert: Pro
   const targetPrice = input.alertType === "PRICE_DROP" ? input.targetPrice : null;
 
   const existing = await prisma.productAlert.findFirst({
-    where: { userId: input.userId, productId: input.productId, alertType: input.alertType, isTriggered: false },
+    where: { userId: input.userId, productId: input.productId, alertType: input.alertType, isTriggered: false, status: "ACTIVE" },
   });
 
   if (existing) {
@@ -129,7 +129,7 @@ export interface TriggeredAlertResult {
  */
 export async function checkAndTriggerAlerts(): Promise<TriggeredAlertResult> {
   const pending = await prisma.productAlert.findMany({
-    where: { isTriggered: false },
+    where: { isTriggered: false, status: "ACTIVE" },
     select: { id: true, userId: true, productId: true, alertType: true, targetPrice: true },
   });
   if (pending.length === 0) {
@@ -241,6 +241,7 @@ export interface SerializedAlert {
   alertType: string;
   targetPrice: number | null;
   isTriggered: boolean;
+  status: string;
   createdAt: Date;
 }
 
@@ -261,16 +262,19 @@ export async function listAlerts(userId: string): Promise<SerializedAlert[]> {
     alertType: a.alertType,
     targetPrice: a.targetPrice !== null ? Number(a.targetPrice) : null,
     isTriggered: a.isTriggered,
+    status: a.status,
     createdAt: a.createdAt,
   }));
 }
 
-/** Kullanıcının alarmını siler. Ownership userId filtresiyle garanti edilir;
- *  alarm yoksa veya başkasına aitse false döner (IDOR koruması — route 404 verir). */
-export async function deleteAlert(userId: string, alertId: string): Promise<boolean> {
+/** Kullanıcının alarmını iptal eder (soft-cancel: status=CANCELLED). Kalıcı silme
+ *  yerine iptal edilmiş alarm istatistikte CANCELLED olarak görünür. Ownership userId
+ *  filtresiyle garanti edilir; alarm yoksa veya başkasına aitse false döner
+ *  (IDOR koruması — route 404 verir). */
+export async function cancelAlert(userId: string, alertId: string): Promise<boolean> {
   const alert = await prisma.productAlert.findFirst({ where: { id: alertId, userId } });
   if (!alert) return false;
-  await prisma.productAlert.delete({ where: { id: alert.id } });
+  await prisma.productAlert.update({ where: { id: alert.id }, data: { status: "CANCELLED" } });
   return true;
 }
 
