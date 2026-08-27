@@ -1,7 +1,7 @@
 # DEVAM DURUMU — B&M Vourla (Kaldığımız Yer)
 
 > Bu dosyayı okuduğunda projeye hâkim olup kaldığın yerden devam edebilirsin.
-> Son güncelleme: 2026-08-27 (FAZ 10 sonu).
+> Son güncelleme: 2026-08-27 (FAZ 12 sonu).
 
 ## Proje konumu & çalıştırma
 
@@ -21,7 +21,7 @@ npx tsx prisma/seed-*.ts # seed'ler (idempotent)
 npx tsx scripts/db-integrity-check.ts
 ```
 
-`.env` (gitignore'da, commit'e girmez) şunları içerir: `DATABASE_URL`, `NEXTAUTH_SECRET`, `ADMIN_SEED_EMAIL/PASSWORD`, `OPENAI_API_KEY`, `DEEPSEEK_API_KEY`, `GEMINI_API_KEY`, `STORAGE_*`. Admin: `admin@bmvourla.com`.
+`.env` (gitignore'da, commit'e girmez) şunları içerir: `DATABASE_URL`, `NEXTAUTH_SECRET`, `ADMIN_SEED_EMAIL/PASSWORD`, `OPENAI_API_KEY`, `DEEPSEEK_API_KEY`, `GEMINI_API_KEY`, `STORAGE_*`, `EMAIL_PROVIDER`/`RESEND_API_KEY`/`EMAIL_FROM` (FAZ 10 bildirim). Admin: `admin@bmvourla.com`.
 
 ## Tamamlanan fazlar (git'te commit'li)
 
@@ -39,8 +39,10 @@ npx tsx scripts/db-integrity-check.ts
 - **FAZ 8** admin dashboard "Affiliate & BOM Eşleşme Performansı" kartı
 - **FAZ 9** stok & fiyat alarmları (ProductAlert + alert-service + /api/alerts + /api/admin/alerts/trigger + ürün/alarmlarım UI)
 - **FAZ 10** e-posta bildirim servisi (email-service: CONSOLE/MOCK/RESEND adapter + alert trigger entegrasyonu + 15 unit test)
+- **FAZ 11** admin analitik & performans dashboard'u (analytics-service: alarm istatistikleri + en çok alarm kurulan ürünler + e-posta teslimat başarı oranı + /api/admin/analytics + AdminAnalytics UI)
+- **FAZ 12** dokümantasyon + production hazırlığı (DEPLOYMENT.md deploy/env/cron/güvenlik rehberi)
 
-**Git HEAD:** `ffa6936` (son commit'ler: FAZ 10 email → FAZ 9 alerts → FAZ 9 mojibake fix → FAZ 9 alerts → FAZ 8 handoff).
+**Git HEAD:** `33b456a` (son commit'ler: FAZ 11 analytics dashboard → FAZ 10 docs → FAZ 10 email → FAZ 9 mojibake fix → FAZ 9 alerts).
 
 ## Veritabanı durumu (dev.db)
 
@@ -59,21 +61,20 @@ npx tsx scripts/db-integrity-check.ts
 ## Doğrulama durumu (son)
 
 - `npx tsc --noEmit` → **0 hata** ✅
-- `npm test` → **257/257** (25 dosya) ✅
-- `npm run build` → **başarılı** (FAZ 9 ve FAZ 10 sonrası da doğrulandı, 32 statik sayfa).
+- `npm test` → **271/271** (26 dosya) ✅
+- `npm run build` → **başarılı** (FAZ 11 sonrası da doğrulandı, 32 statik sayfa).
 
 ## Commit'lenmemiş durum
 
-- Temiz — FAZ 8/9/10 değişiklikleri commit'li. Not: `scripts/verify-e2e.sh` Windows'ta executable bit'i saklanamadığı için sahte mode farkı veriyordu; `git config core.filemode false` ile çözüldü (yerel config, commit'e girmez).
+- Temiz — FAZ 8-12 değişiklikleri commit'li. Not: `scripts/verify-e2e.sh` Windows'ta executable bit'i saklanamadığı için sahte mode farkı veriyordu; `git config core.filemode false` ile çözüldü (yerel config, commit'e girmez).
 
 ## Sıradaki işler (önerilen sıra)
 
-1. `npm run build` ile FAZ 6-8 sonrası build'i yeniden doğrula.
-2. **Canlı LLM yolunu gerçek anahtarla test et**: `/api/ai-designer/design` artık OpenAI'ye (gpt-4o-mini) gidecek; `POST` ile bir istek atıp `source: "llm"` gelip gelmediğini ve failover'ı doğrula.
-3. **Fotoğraf/ses UI'ı**: `ai-designer-inputs.ts` (`PhotoInput`/`voiceTranscript`/`parseCommand`) hazır ama kamera + Web Speech API UI'ı bağlanmadı (route'a `photoDataUrl` geçişi de henüz yok).
-4. **Affiliate gerçek ürün linkleri**: şu an satıcı-arama URL'leri; admin'de gerçek ürün linklerine çevrilecek.
-5. `db-integrity-check.ts`'e `AffiliateProduct`/`AffiliateClick` bütünlük kontrolü eklenebilir (şu an yok — tıklamalar AuditLog'da `AFFILIATE_CLICK`, ayrı tablo yok).
-6. İstenirse admin dashboard'a affiliate analytics tüketici zaten var (FAZ 8 kartı).
+1. **Production deploy**: `DEPLOYMENT.md`'deki adımları izle — kalıcı disk sunmayan platform (Vercel) için SQLite → hosted Postgres (Neon/Supabase) geçişi ZORUNLU; `DATABASE_URL` tek satır değişikliği.
+2. **Alarm cron'u**: `checkAndTriggerAlerts()` şu an yalnızca `POST /api/admin/alerts/trigger` ile manuel tetikleniyor. Üretimde harici bir cron (Vercel Cron / GitHub Actions / uptime ping) ile periyodik çağrı bağlanmalı (bkz. DEPLOYMENT.md).
+3. **Gerçek e-posta teslimatı**: `.env`'de `EMAIL_PROVIDER=RESEND` + `RESEND_API_KEY` + gerçek `EMAIL_FROM` ayarlanana kadar bildirimler CONSOLE'a düşer (`delivered:false` — dürüst mock).
+4. **Affiliate gerçek ürün linkleri**: hâlâ satıcı-arama URL'leri; admin'de gerçek ürün linklerine çevrilecek.
+5. İstenirse `ProductAlert`'a gerçek bir `status` (CANCELLED) alanı eklenebilir — şu an iptal DELETE ile kalıcı siliniyor, CANCELLED istatistiği bu yüzden 0.
 
 ## Araç/tooling uyarıları (gelecek oturum için)
 

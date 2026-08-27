@@ -1,0 +1,159 @@
+# DEPLOYMENT — B&M Vourla (Production Hazırlık Rehberi)
+
+> Son güncelleme: 2026-08-27 (FAZ 12).
+> Bu doküman, projeyi canlı ortama taşımak için gereken adımları, çevre
+> değişkenlerini, cron yapılandırmasını ve güvenlik önlemlerini tek yerde toplar.
+
+## 1. Mimari özet
+
+- **Stack:** Next.js 14 (App Router) + TypeScript + Prisma + NextAuth + Zod + Vitest.
+- **Veritabanı:** SQLite (geliştirme). Production için kalıcı disk sunmayan
+  platformlarda **hosted Postgres'e geçiş ZORUNLUDUR** (bkz. Bölüm 2).
+- **Auth:** NextAuth JWT (httpOnly cookie), `kind: "admin" | "customer"` iki oturum türü.
+- **E-posta:** Provider/Adapter mimarisi (`EMAIL_PROVIDER`): `CONSOLE` / `MOCK` / `RESEND`.
+- **Alarm tetikleme:** `checkAndTriggerAlerts()` — manuel endpoint (`POST /api/admin/alerts/trigger`)
+  veya harici cron ile çağrılır (bkz. Bölüm 5).
+
+---
+
+## 2. Veritabanı: SQLite → hosted Postgres
+
+Kalıcı disk sunmayan platformlara (Vercel, serverless) dağıtımda SQLite çalışmaz.
+Geçiş adımları:
+
+1. `prisma/schema.prisma` içindeki:
+   ```prisma
+   datasource db {
+     provider = "sqlite"
+     url      = env("DATABASE_URL")
+   }
+   ```
+   satırını şöyle değiştir:
+   ```prisma
+   datasource db {
+     provider = "postgresql"
+     url      = env("DATABASE_URL")
+   }
+   ```
+2. `DATABASE_URL`'i hosted Postgres bağlantı dizesiyle doldur
+   (Neon, Supabase, RDS vb.). Örnek: `postgresql://user:pass@host:5432/db?sslmode=require`.
+3. Migration'ları uygula: `npx prisma migrate deploy` (elle SQL yok — tüm migration'lar
+   `prisma/migrations/` altında version-controlled).
+4. Seed'leri çalıştır (idempotent): `npx tsx prisma/seed-admin.ts` + `npx tsx prisma/seed-garden-products.ts`.
+
+> Not: Tüm "enum" alanlar bilinçli olarak `String` tutulur (SQLite native enum
+> desteklemediği için). Postgres'e geçince gerçek enum'a çevirmek **isteğe bağlıdır**,
+> zorunlu değildir. Şemanın geri kalanı değişmeden çalışır.
+
+---
+
+## 3. Çevre değişkenleri (`.env`)
+
+Tam liste ve açıklamalar `.env.example` içindedir. Production için kritik olanlar:
+
+| Değişken | Zorunlu | Not |
+|---|---|---|
+| `DATABASE_URL` | ✅ | Production: hosted Postgres bağlantı dizesi |
+| `NEXTAUTH_SECRET` | ✅ | `openssl rand -base64 32` ile üret; **dev ile asla aynı olmasın** |
+| `NEXTAUTH_URL` | ✅ | Deploy domain'i (ör. `https://bmvourla.com`) |
+| `NEXT_PUBLIC_APP_URL` | ✅ | Server component'lerin kendi API'sine fetch taban URL'i |
+| `NODE_ENV` | ✅ | `production` |
+| `ADMIN_SEED_EMAIL` / `ADMIN_SEED_PASSWORD` | Yalnızca ilk kurulum | Seed sonrası sil; admin şifresini panelden değiştir |
+| `LOGIN_MAX_ATTEMPTS` | Hayır (varsayılan 5) | Brute-force penceresi |
+| `LOGIN_WINDOW_MINUTES` | Hayır (varsayılan 15) | Brute-force pencere süresi |
+| `STORAGE_DRIVER` | Hayır (`local`) | S3 için `s3` + `S3_*` değişkenleri |
+| `OPENAI_API_KEY` / `DEEPSEEK_API_KEY` / `GEMINI_API_KEY` / `ANTHROPIC_API_KEY` | Hayır | Canlı LLM/Vision (anahtar yoksa rule-based fallback) |
+| `EMAIL_PROVIDER` | Hayır (`CONSOLE`) | `CONSOLE` \| `MOCK` \| `RESEND` |
+| `RESEND_API_KEY` | Yalnızca `EMAIL_PROVIDER=RESEND` | Resend API anahtarı |
+| `EMAIL_FROM` | Yalnızca RESEND | Doğrulanmış gönderici adresi (ör. `noreply@bmvourla.com`) |
+
+> `NEXT_PUBLIC_` öneki olmayan hiçbir değişken tarayıcıya sızmaz (Next.js kuralı).
+> Sırları dağıtım platformunun kendi secret yönetimine girin; `.env` dosyasını
+> sunucuya taşımayın.
+
+---
+
+## 4. Build & çalıştırma
+
+```bash
+npm install
+npm run build     # Next production build
+npm run start     # next start -p 3000
+```
+
+Vercel'de: framework "Next.js" otomatik algılanır; build command `npm run build`,
+output varsayılandır. Tek ek gereksinim hosted Postgres (Bölüm 2).
+
+---
+
+## 5. Cron: Alarm tetikleme
+
+`checkAndTriggerAlerts()` bekleyen stok/fiyat alarmlarını tarar, tetiklenenlere
+e-posta gönderir ve sonucu AuditLog'a yazar. **Uygulama içinde gerçek bir
+scheduler YOK** (bkz. `src/lib/pricing.ts`'teki "aktiflik okuma anında türetilir"
+kararı) — tetikleme şu yollarla yapılır:
+
+- **Manuel (admin):** `POST /api/admin/alerts/trigger` (admin oturumu gerekli).
+- **Harici cron:** Bu endpoint'i periyodik çağıran bir job kurun:
+  - **Vercel Cron Jobs** (`vercel.json`):
+    ```json
+    {
+      "crons": [
+        { "path": "/api/admin/alerts/trigger", "schedule": "*/15 * * * *" }
+      ]
+    }
+    ```
+    > Not: Endpoint `requireAdmin` korumalıdır. Vercel Cron'un kimlik doğrulamalı
+    > bir uca istek atabilmesi için ayrı bir servis-token mekanizması eklenmeli
+    > (bu FAZ'da eklenmedi) ya da cron'u GitHub Actions / uptime-ping servisiyle
+    > yönetin.
+  - **GitHub Actions:** `workflow_dispatch` veya `schedule` ile `curl -X POST
+    https://<domain>/api/admin/alerts/trigger` (auth eklenmeli).
+
+Önerilen cadans: 15 dakikada bir (stok/fiyat değişimi bildirimleri için makul).
+
+---
+
+## 6. E-posta (Resend) kurulumu
+
+1. Resend hesabı aç, alan adını doğrula (domain doğrulaması).
+2. `.env`'e:
+   ```
+   EMAIL_PROVIDER=RESEND
+   RESEND_API_KEY=<api-key>
+   EMAIL_FROM=noreply@bmvourla.com
+   ```
+3. `EMAIL_PROVIDER` yoksa/`CONSOLE` ise e-postalar stdout'a yazılır ve
+   `delivered:false` loglanır (gerçek teslimat iddiası yok — dürüst davranış).
+   `RESEND` + 2xx yanıt → `delivered:true`.
+
+---
+
+## 7. Güvenlik kontrol listesi (deploy öncesi)
+
+- [ ] `NEXTAUTH_SECRET` dev'den farklı, güçlü bir değer.
+- [ ] `NODE_ENV=production`, `NEXTAUTH_URL` gerçek domain.
+- [ ] `DATABASE_URL` hosted Postgres (SQLite DEĞİL, serverless için).
+- [ ] `ADMIN_SEED_PASSWORD` seed sonrası değiştirildi / `.env`'den silindi.
+- [ ] `.env` git'e girmedi (`.gitignore` doğrulandı).
+- [ ] Brute-force: `LOGIN_MAX_ATTEMPTS`/`LOGIN_WINDOW_MINUTES` uygun (varsayılan 5/15).
+- [ ] HTTP başlıkları aktif (`X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy`,
+      `Permissions-Policy` — `next.config.js`).
+- [ ] E-posta: `EMAIL_FROM` doğrulanmış gönderici adresi.
+- [ ] Migration'lar `prisma migrate deploy` ile uygulandı (elle SQL yok).
+
+**Bilinen sınır (CSP):** Content-Security-Policy başlığı henüz eklenmedi —
+Font Awesome / Google Fonts harici kaynakları nedeniyle dikkatli bir politika
+gerekir; ayrı bir iterasyon olarak önerilir (bkz. `docs/security.md`).
+
+---
+
+## 8. Rollback / sır rotasyonu
+
+- `NEXTAUTH_SECRET` değişirse tüm aktif oturumlar geçersiz olur (JWT imzası) —
+  beklenen ve güvenli davranıştır.
+- Migration rollback: Prisma Migrate `--create-only` ile manuel down-migration
+  üretilir; doğrudan geriye `migrate deploy` yoktur — yeni bir migration ile
+  düzeltme yapılır.
+- `.env` yanlışlıkla commit edilirse: `NEXTAUTH_SECRET` + `ADMIN_SEED_PASSWORD`
+  derhal değiştirilir; git geçmişinden temizlik (`git filter-repo`) ayrı işlemdir.
