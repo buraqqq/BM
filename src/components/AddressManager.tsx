@@ -130,7 +130,7 @@ export function AddressManager() {
         <a className="active" href="/hesabim/adresler">
           Adreslerim
         </a>
-        <a href="/hesabim/siparislerim">SipariÅŸlerim</a>
+        <a href="/hesabim/siparislerim">Siparişlerim</a>
         <a href="/hesabim/alarmlar">Alarmlarım</a>
         <a href="/sepet">Sepetim</a>
       </div>
