@@ -223,5 +223,6 @@ export const AUDIT_ACTIONS = [
   "ORDER_STATUS_UPDATE",
   "ORDER_PAYMENT_STATUS_UPDATE",
   "AFFILIATE_CLICK",
+  "AI_DESIGN_GENERATED",
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];

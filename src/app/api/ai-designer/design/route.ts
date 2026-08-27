@@ -12,6 +12,7 @@ import {
   BUDGETS,
 } from "@/lib/ai-designer-logic";
 import { applyCommand, generateMockVisualLayout } from "@/lib/ai-designer-inputs";
+import { writeAuditLog, getClientIp } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
 
@@ -75,6 +76,14 @@ export async function POST(req: NextRequest) {
 
   const output = await generateDesignWithFallback(input, internalProducts, affiliateRefs);
   const visual = generateMockVisualLayout(output.result.zones);
+
+  await writeAuditLog({
+    adminUserId: null,
+    action: "AI_DESIGN_GENERATED",
+    entity: "AiDesign",
+    ipAddress: getClientIp(req),
+    metadata: { source: output.source, internalCount: output.result.cost.internalItemCount, affiliateCount: output.result.cost.affiliateItemCount },
+  });
 
   return NextResponse.json({ ...output, input, visual }, { status: 200 });
 }
