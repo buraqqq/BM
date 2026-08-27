@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { ALERT_TYPES } from "@/lib/enums";
 import { computeFinalPrice, getCurrentlyActiveCampaigns } from "@/lib/pricing";
 import { writeAuditLog } from "@/lib/audit";
+import { buildAlertEmail, resolveProvider } from "@/lib/email-service";
 import type { Product, ProductAlert } from "@prisma/client";
 
 // ==========================================================
@@ -10,11 +11,12 @@ import type { Product, ProductAlert } from "@prisma/client";
 //
 // Saf (DB'siz) tetikleme mantığı + ince DB katmanı aynı dosyada, projenin
 // kurulu desenine uygun (bkz. analytics.service.ts: saf compute + prisma
-// wrapper). Bildirim: gerçek bir e-posta/SMS servisi YOK — tetiklenen alarm
-// "ALERT_TRIGGERED" aksiyonuyla AuditLog'a yazılır (müşteri-facing olaylar
-// için zaten AFFILIATE_CLICK / AI_DESIGN_GENERATED aynı yere, adminUserId:null
-// ile yazılıyor) ve metadata'ya `delivered:false` + `channel:"email"` konur;
-// yani "gönderildi" demek yerine "mock bildirim üretildi" açıkça işaretlenir.
+// wrapper). Bildirim (FAZ 10): tetiklenen alarm, src/lib/email-service.ts
+// üzerinden (EMAIL_PROVIDER: CONSOLE/RESEND/MOCK) kullanıcının e-posta adresine
+// gönderilir ve sonuç "ALERT_TRIGGERED" aksiyonuyla AuditLog'a yazılır
+// (müşteri-facing olaylar için zaten AFFILIATE_CLICK / AI_DESIGN_GENERATED aynı
+// yere, adminUserId:null ile yazılıyor) — metadata'da `delivered` + `provider`
+// + `error` (varsa) dürüstçe raporlanır.
 // ==========================================================
 
 // ----------------------------------------------------------
@@ -169,22 +171,47 @@ export async function checkAndTriggerAlerts(): Promise<TriggeredAlertResult> {
     });
     if (updated.count === 0) continue; // başka bir çalıştırma zaten tetikledi
 
-    await notifyTriggeredAlert(alert, product, finalPrice, stockQuantity);
+    await notifyTriggeredAlert({ id: alert.id, userId: alert.userId, alertType: alert.alertType, targetPrice: alert.targetPrice !== null ? Number(alert.targetPrice) : null }, product, finalPrice, stockQuantity);
     notifications.push({ alertId: alert.id, productId: alert.productId, alertType: alert.alertType });
   }
 
   return { checkedCount: pending.length, triggeredCount: notifications.length, notifications };
 }
 
-/** Bildirim (mock): gerçek e-posta servisi olmadığı için AuditLog'a "ALERT_TRIGGERED"
- *  yazar ve metadata'ya delivered:false koyar. Gerçek bir mailer eklendiğinde
- *  bu fonksiyon TEK değişiklik noktası olacak şekilde tasarlandı. */
+/** Tetiklenen alarm için e-posta bildirimi gönderir. Kullanıcının e-posta
+ *  adresini bulur, EMAIL_PROVIDER'a göre seçilen provider ile gönderir ve sonucu
+ *  (provider, delivered, hata) AuditLog'a "ALERT_TRIGGERED" olarak yazar.
+ *  Gönderim gerçek bir dağıtım kanalına ulaştıysa delivered:true; hata/eksik
+ *  e-posta durumunda delivered:false + error yazılır. */
 async function notifyTriggeredAlert(
-  alert: { id: string; userId: string; alertType: string },
+  alert: { id: string; userId: string; alertType: string; targetPrice: number | null },
   product: Product,
   finalPrice: number,
   stockQuantity: number | null
 ): Promise<void> {
+  const recipient = await prisma.user.findUnique({ where: { id: alert.userId }, select: { email: true } });
+  const provider = resolveProvider();
+  const draft = buildAlertEmail({
+    alertType: alert.alertType,
+    productName: product.name,
+    finalPrice,
+    targetPrice: alert.targetPrice,
+    stockQuantity,
+  });
+
+  let delivered = false;
+  let providerName = "none";
+  let sendError: string | undefined;
+  if (recipient?.email) {
+    const result = await provider.send({ to: recipient.email, subject: draft.subject, text: draft.text });
+    delivered = result.delivered;
+    providerName = result.provider;
+    sendError = result.error;
+  } else {
+    providerName = provider.name;
+    sendError = "USER_EMAIL_MISSING";
+  }
+
   await writeAuditLog({
     adminUserId: null,
     action: "ALERT_TRIGGERED",
@@ -198,7 +225,9 @@ async function notifyTriggeredAlert(
       finalPrice: Math.round(finalPrice * 100) / 100,
       stockQuantity,
       channel: "email",
-      delivered: false, // gerçek e-posta servisi henüz yok (mock)
+      provider: providerName,
+      delivered,
+      ...(sendError ? { error: sendError } : {}),
     },
   });
 }
