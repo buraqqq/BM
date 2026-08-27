@@ -714,6 +714,7 @@ model AffiliateProduct {
   name          String
   vendor        String
   affiliateUrl  String
+  commissionRate Decimal? // % komisyon oranÄ± (Ã¶r. 6.5)
   // Tasarım BOM bileşeni türü: bitki | toprak | saksi | sulama | mobilya |
   // aydinlatma | dekor | gubre | alet (bkz. ai-designer-logic.ts)
   category      String

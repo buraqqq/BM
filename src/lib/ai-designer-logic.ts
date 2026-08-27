@@ -186,6 +186,7 @@ export interface InternalProductRef {
   price: number;
   categorySlug: string;
   unit: string;
+  stockQuantity?: number | null; // undefined/null = stok takip edilmiyor
 }
 
 export interface AffiliateRef {
@@ -261,11 +262,12 @@ function groupBy<T>(items: T[], key: (i: T) => string): Map<string, T[]> {
 
 export function matchBomToCatalog(bom: BomItem[], internalProducts: InternalProductRef[], affiliateProducts: AffiliateRef[]): MatchedItem[] {
   const internalByCategory = groupBy(internalProducts, (i) => i.categorySlug);
-  const affiliateByCategory = groupBy(affiliateProducts, (a) => a.category);
+  const sortedAffiliates = affiliateProducts.slice().sort((a, b) => (a.estimatedPrice ?? Number.MAX_SAFE_INTEGER) - (b.estimatedPrice ?? Number.MAX_SAFE_INTEGER));
+  const affiliateByCategory = groupBy(sortedAffiliates, (a) => a.category);
 
   return bom.map((item) => {
     for (const cat of INTERNAL_CATEGORY_BY_KIND[item.kind] ?? []) {
-      const match = internalByCategory.get(cat)?.[0];
+      const match = internalByCategory.get(cat)?.find((p) => (p.stockQuantity ?? 1) > 0);
       if (match) {
         return {
           kind: item.kind, label: item.label, quantity: item.quantity, unit: item.unit, note: item.note,

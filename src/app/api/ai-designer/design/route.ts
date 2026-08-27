@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
   const input = applyCommand(rawInput, textCommand);
 
   const [products, affiliateProducts, activeCampaigns] = await Promise.all([
-    prisma.product.findMany({ where: { isActive: true }, include: { category: true } }),
+    prisma.product.findMany({ where: { isActive: true }, include: { category: true, inventory: true } }),
     prisma.affiliateProduct.findMany({ where: { isActive: true } }),
     getCurrentlyActiveCampaigns(),
   ]);
@@ -61,6 +61,7 @@ export async function POST(req: NextRequest) {
     price: Math.round(computeFinalPrice(p, activeCampaigns).finalPrice * 100) / 100,
     categorySlug: p.category.slug,
     unit: p.unit,
+    stockQuantity: p.inventory?.quantity ?? null,
   }));
 
   const affiliateRefs = affiliateProducts.map((a) => ({

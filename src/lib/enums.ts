@@ -222,5 +222,6 @@ export const AUDIT_ACTIONS = [
   // değiştirdiğinde AuditLog'a yazılır (transition order-logic ile doğrulanır).
   "ORDER_STATUS_UPDATE",
   "ORDER_PAYMENT_STATUS_UPDATE",
+  "AFFILIATE_CLICK",
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
