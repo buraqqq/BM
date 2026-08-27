@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { AffiliatePerformanceCard } from "@/components/AffiliatePerformanceCard";
 
 interface DashboardData {
   products: { total: number; active: number; inactive: number };
@@ -14,8 +15,7 @@ interface DashboardData {
 // Bölüm 38/45 — Katalog Operasyon Merkezi ana panosu. Tüm sayılar
 // /api/admin/dashboard'dan, yani doğrudan canlı DB'den gelir; hiçbiri
 // sabit/örnek veri değildir. "Legacy stoklar doğrulanmayı bekliyor" bandı
-// unverifiedInventoryCount > 0 olduğu sürece HER ZAMAN görünür kalır —
-// gizlenemez, çünkü Bölüm 45'in açık gereksinimi budur.
+// unverifiedInventoryCount > 0 olduğu sürece HER ZAMAN görünür kalır.
 export default function AdminDashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -109,6 +109,9 @@ export default function AdminDashboardPage() {
           </div>
         )}
       </div>
+
+      {/* FAZ 8 — Affiliate & BOM eşleşme performansı kartı */}
+      <AffiliatePerformanceCard />
 
       <div className="admin-card">
         <p style={{ fontSize: "0.85rem", color: "var(--gray-600)" }}>
