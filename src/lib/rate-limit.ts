@@ -17,6 +17,28 @@ export async function isLoginRateLimited(email: string): Promise<boolean> {
   return failedCount >= MAX_ATTEMPTS;
 }
 
+/**
+ * Kayıt (registration) denemeleri için — aynı e-posta VEYA aynı IP ile kısa
+ * sürede çok sayıda deneme yapılmasını engeller (hesap spam'i ve e-posta
+ * keşfi/enumeration). Login'den farklı olarak BAŞARILI girişimleri de sayar:
+ * kayıt yanıtı "bu e-posta zaten kayıtlı / kaydedildi" ayrımını sızdırdığı
+ * için, keşfi sınırlamak amacıyla tüm denemeler sayılır.
+ */
+export async function isRegistrationRateLimited(email: string, ip: string | null): Promise<boolean> {
+  const since = new Date(Date.now() - WINDOW_MINUTES * 60 * 1000);
+  const byEmail = await prisma.loginAttempt.count({
+    where: { email: email.toLowerCase(), createdAt: { gte: since } },
+  });
+  if (byEmail >= MAX_ATTEMPTS) return true;
+  if (ip) {
+    const byIp = await prisma.loginAttempt.count({
+      where: { ipAddress: ip, createdAt: { gte: since } },
+    });
+    if (byIp >= MAX_ATTEMPTS) return true;
+  }
+  return false;
+}
+
 export async function recordLoginAttempt(params: {
   email: string;
   success: boolean;

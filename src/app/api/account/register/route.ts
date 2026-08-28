@@ -3,6 +3,8 @@ import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { customerRegisterSchema } from "@/lib/customer-validation";
 import { normalizeEmail, validatePasswordStrength } from "@/lib/customer-auth";
+import { isRegistrationRateLimited, recordLoginAttempt } from "@/lib/rate-limit";
+import { getClientIp } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +26,14 @@ export async function POST(req: NextRequest) {
   }
   const data = parsed.data;
   const email = normalizeEmail(data.email);
+  const ip = getClientIp(req);
+
+  if (await isRegistrationRateLimited(email, ip)) {
+    return NextResponse.json(
+      { error: "RATE_LIMITED", message: "Çok fazla deneme yaptınız. Lütfen biraz sonra tekrar deneyin." },
+      { status: 429 }
+    );
+  }
 
   const strength = validatePasswordStrength(data.password);
   if (!strength.ok) {
@@ -35,6 +45,7 @@ export async function POST(req: NextRequest) {
 
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) {
+    await recordLoginAttempt({ email, success: false, ipAddress: ip, adminUserId: null });
     // Bölüm 3 ile tutarlı: hesap var/yok bilgisini login'de sızdırmıyoruz,
     // ama KAYIT'ta "bu e-posta zaten kullanımda" mesajı vermek standart ve
     // gerekli bir UX'tir (login'deki "kullanıcı var/yok sızdırma" kuralı
@@ -55,5 +66,6 @@ export async function POST(req: NextRequest) {
     },
   });
 
+  await recordLoginAttempt({ email, success: true, ipAddress: ip, adminUserId: null });
   return NextResponse.json({ id: user.id, email: user.email, name: user.name, surname: user.surname }, { status: 201 });
 }
