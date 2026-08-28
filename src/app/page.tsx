@@ -3,7 +3,7 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { MobileTabBar } from "@/components/MobileTabBar";
 import { CategoryGrid, type PublicCategory, type PublicProduct } from "@/components/CategoryGrid";
 import { ProductCard, type ProductCardProduct } from "@/components/ProductCard";
-import { apiGet } from "@/lib/api-base";
+import { getHomepageData } from "@/lib/storefront-data";
 import { absoluteUrl } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
@@ -50,19 +50,7 @@ export function generateMetadata(): Metadata {
 // daha az istek anlamına geliyor. 10.000+ ürüne çıkıldığında bu vitrinler
 // kendi `/api/products?featured=1` vb. çağrılarına ayrılmalı (bkz. docs).
 export default async function HomePage() {
-  const [categoriesRes, productsRes, settings, bannersRes, campaignsRes] = await Promise.all([
-    apiGet<CategoriesResponse>("/api/categories"),
-    apiGet<ProductsResponse>("/api/products?pageSize=100"),
-    apiGet<Settings>("/api/settings"),
-    apiGet<BannersResponse>("/api/banners"),
-    apiGet<CampaignsResponse>("/api/campaigns"),
-  ]);
-
-  const allProducts: ProductsResponse["items"] = [...productsRes.items];
-  if (productsRes.total > allProducts.length) {
-    const remaining = await apiGet<ProductsResponse>(`/api/products?pageSize=${productsRes.total}`);
-    allProducts.splice(0, allProducts.length, ...remaining.items);
-  }
+  const { categories, products: allProducts, settings, banners, campaigns } = await getHomepageData();
 
   const productsByCategory: Record<string, PublicProduct[]> = {};
   for (const p of allProducts) {
@@ -78,8 +66,8 @@ export default async function HomePage() {
   const discountedProducts = allProducts.filter((p) => p.price.discountSource !== "none").slice(0, 8);
 
   const whatsappNumber = settings.contact_whatsapp ?? "905060557530";
-  const campaign = campaignsRes.items[0];
-  const banner = bannersRes.items[0];
+  const campaign = campaigns[0];
+  const banner = banners[0];
 
   // Bahçe temalı görsel bant için — gerçek fotoğraf varlığı yok (bkz.
   // FAZ2.1 integrity check: productImages=0), bu yüzden gerçek olmayan bir
@@ -87,7 +75,7 @@ export default async function HomePage() {
   // kullandığı gradient+ikon kartları (bkz. .hero, .cat-card) kullanıldı —
   // her kart gerçek bir kategoriye bağlanıyor (uydurma metin değil, DB'deki
   // kategori adı/açıklaması).
-  const gardenCategories = categoriesRes.items.slice(0, 3);
+  const gardenCategories = categories.slice(0, 3);
 
   return (
     <>
@@ -255,7 +243,7 @@ export default async function HomePage() {
             <h2 className="section-title">Ürün Kategorileri</h2>
             <p className="section-desc">Kategoriye tıklayın, tüm ürünleri ve güncel fiyatları görün.</p>
           </div>
-          <CategoryGrid categories={categoriesRes.items} productsByCategory={productsByCategory} />
+          <CategoryGrid categories={categories} productsByCategory={productsByCategory} />
         </div>
       </section>
 
