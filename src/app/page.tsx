@@ -77,7 +77,6 @@ export default async function HomePage() {
     .slice(0, 8);
   const discountedProducts = allProducts.filter((p) => p.price.discountSource !== "none").slice(0, 8);
 
-  const totalActiveProducts = productsRes.total > allProducts.length ? productsRes.total : allProducts.length;
   const whatsappNumber = settings.contact_whatsapp ?? "905060557530";
   const campaign = campaignsRes.items[0];
   const banner = bannersRes.items[0];
@@ -253,7 +252,7 @@ export default async function HomePage() {
       <section className="categories" id="kategoriler">
         <div className="container">
           <div className="section-header">
-            <h2 className="section-title">{totalActiveProducts} Çeşit Ürün – {categoriesRes.items.length} Kategori</h2>
+            <h2 className="section-title">Ürün Kategorileri</h2>
             <p className="section-desc">Kategoriye tıklayın, tüm ürünleri ve güncel fiyatları görün.</p>
           </div>
           <CategoryGrid categories={categoriesRes.items} productsByCategory={productsByCategory} />
