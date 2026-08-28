@@ -16,6 +16,7 @@ export const metadata: Metadata = {
     siteName: "B&M Vourla",
     locale: "tr_TR",
     type: "website",
+    images: [{ url: "/og-image.png", width: 1200, height: 630, alt: "B&M Vourla – Bahçe & Mangal" }],
   },
 };
 
@@ -32,7 +33,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {/* FAZ 5 — PWA */}
         <link rel="manifest" href="/manifest.json" />
         <meta name="theme-color" content="#E65100" />
-        <link rel="apple-touch-icon" href="/icons/icon.svg" />
+        <link rel="icon" type="image/svg+xml" href="/icons/icon.svg" />
+        <link rel="icon" type="image/png" sizes="512x512" href="/icons/icon-512.png" />
+        <link rel="apple-touch-icon" href="/icons/icon-512.png" />
       </head>
       <body>
         <SessionProviderClient>{children}</SessionProviderClient>

@@ -32,7 +32,13 @@ export function generateMetadata(): Metadata {
     title,
     description,
     alternates: { canonical: url },
-    openGraph: { title, description, url, type: "website" },
+    openGraph: {
+      title,
+      description,
+      url,
+      type: "website",
+      images: [{ url: absoluteUrl("/og-image.png"), width: 1200, height: 630, alt: "B&M Vourla – Bahçe & Mangal" }],
+    },
   };
 }
 
