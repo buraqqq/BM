@@ -13,6 +13,7 @@ import {
 } from "@/lib/ai-designer-logic";
 import { applyCommand, generateMockVisualLayout } from "@/lib/ai-designer-inputs";
 import { writeAuditLog, getClientIp } from "@/lib/audit";
+import { isRateLimitedByAction } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -47,6 +48,15 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: "VALIDATION_ERROR", details: parsed.error.flatten() }, { status: 422 });
   }
+
+  const ip = getClientIp(req);
+  if (await isRateLimitedByAction(ip, "AI_DESIGN_GENERATED", 20, 15)) {
+    return NextResponse.json(
+      { error: "RATE_LIMITED", message: "Çok fazla tasarım oluşturdunuz. Lütfen biraz sonra tekrar deneyin." },
+      { status: 429 }
+    );
+  }
+
   const { textCommand, voiceTranscript, photoDataUrl, ...rawInput } = parsed.data;
   // Yazılı komut + sesli transkript aynı kural-tabanlı parser'dan geçer (ses = metin).
   const input = applyCommand(applyCommand(rawInput, textCommand), voiceTranscript);

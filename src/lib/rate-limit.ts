@@ -39,6 +39,26 @@ export async function isRegistrationRateLimited(email: string, ip: string | null
   return false;
 }
 
+/**
+ * Genel IP-tabanlı rate limit — belirli bir aksiyon (AuditLog.action) için
+ * son window içindeki istek sayısını AuditLog üzerinden sayar. AI tasarım
+ * gibi maliyetli/yoğun public uçlarda kötüye kullanımı (LLM maliyet DoS'i)
+ * sınırlamak için kullanılır. IP yoksa (ör. yerel test) kısıtlama uygulanmaz.
+ */
+export async function isRateLimitedByAction(
+  ip: string | null,
+  action: string,
+  max: number,
+  windowMinutes: number
+): Promise<boolean> {
+  if (!ip) return false;
+  const since = new Date(Date.now() - windowMinutes * 60 * 1000);
+  const count = await prisma.auditLog.count({
+    where: { action, ipAddress: ip, createdAt: { gte: since } },
+  });
+  return count >= max;
+}
+
 export async function recordLoginAttempt(params: {
   email: string;
   success: boolean;
