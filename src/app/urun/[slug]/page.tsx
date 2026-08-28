@@ -98,7 +98,6 @@ export default async function ProductPage({ params }: { params: { slug: string }
   if (!product) notFound();
 
   const whatsappNumber = settings.contact_whatsapp ?? "905060557530";
-  const discountPct = settings.whatsapp_discount_percent ?? "2";
   const primaryImage = product.images.find((i) => i.isPrimary) ?? product.images[0] ?? null;
   const waMessage = encodeURIComponent(`Merhaba, ${product.name} ürünü hakkında bilgi almak istiyorum.`);
 
@@ -218,10 +217,6 @@ export default async function ProductPage({ params }: { params: { slug: string }
               >
                 <i className="fab fa-whatsapp" /> WhatsApp ile Sipariş Ver
               </a>
-              <p className="hero-promo" style={{ margin: "0 0 10px" }}>
-                <i className="fas fa-tag" /> WhatsApp siparişlerinde <strong>%{discountPct} indirim!</strong>
-              </p>
-
               {/* FAZ 4A — Bölüm 12/14: gerçek sepete ekleme (miktar seçici) */}
               <QuantityAddToCart productId={product.id} inStock={product.inStock} />
               <div style={{ marginBottom: 10 }} />

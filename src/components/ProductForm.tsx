@@ -216,6 +216,7 @@ export function ProductForm({ productId: initialProductId }: Props) {
       // Yeni ürün: sayfadan ayrılmadan aynı formda devam et, Görseller/Varyantlar
       // sekmeleri artık kullanılabilir hale gelsin ve URL güncellensin.
       setProductId(saved.id);
+      setTab("images"); // kaydettikten hemen sonra fotoğraf yüklemeye geç
       window.history.replaceState(null, "", `/admin/products/${saved.id}`);
     }
     if (saved.duplicateWarnings?.length > 0) {

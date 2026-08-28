@@ -73,7 +73,6 @@ export default async function HomePage() {
 
   const totalActiveProducts = productsRes.total > allProducts.length ? productsRes.total : allProducts.length;
   const whatsappNumber = settings.contact_whatsapp ?? "905060557530";
-  const discountPct = settings.whatsapp_discount_percent ?? "2";
   const campaign = campaignsRes.items[0];
   const banner = bannersRes.items[0];
 
@@ -121,8 +120,28 @@ export default async function HomePage() {
               <i className="fas fa-leaf" /> Kategorileri Gör
             </a>
           </div>
-          <div className="hero-promo">
-            <i className="fas fa-tag" /> WhatsApp siparişlerinde <strong>%{discountPct} indirim!</strong>
+        </div>
+      </section>
+
+      <section className="ai-garden-feature">
+        <div className="container">
+          <div className="ai-garden-card">
+            <div className="ai-garden-icon">
+              <i className="fas fa-robot" />
+            </div>
+            <div className="ai-garden-content">
+              <span className="ai-garden-badge">
+                <i className="fas fa-wand-magic-sparkles" /> Yapay Zekâ Destekli
+              </span>
+              <h2 className="ai-garden-title">AI Bahçe Tasarımı</h2>
+              <p className="ai-garden-desc">
+                Bahçenizin ölçülerini ve tercihlerinizi girin; yapay zekâ size özel bir
+                yerleşim planı ve ürün önerileri hazırlasın. Ücretsiz deneyin.
+              </p>
+              <a href="/bahce-tasarimi" className="btn btn-primary ai-garden-cta">
+                <i className="fas fa-pen-ruler" /> Tasarıma Başla
+              </a>
+            </div>
           </div>
         </div>
       </section>

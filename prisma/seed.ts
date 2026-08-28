@@ -239,7 +239,6 @@ async function main() {
     contact_instagram_handle: "@bm.vourla",
     contact_instagram_url: "https://www.instagram.com/bm.vourla?igsh=d3FxZWYyb2MwMmEx",
     contact_email: "bm.vourla@gmail.com",
-    whatsapp_discount_percent: "2",
     footer_copyright: "© 2026 B&M Vourla – Bahçe & Mangal | Altıntaş Mah. Besim Uyal Cad. No:121/A Urla/İzmir",
   };
   for (const [key, value] of Object.entries(settings)) {
