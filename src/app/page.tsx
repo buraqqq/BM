@@ -6,7 +6,10 @@ import { ProductCard, type ProductCardProduct } from "@/components/ProductCard";
 import { getHomepageData } from "@/lib/storefront-data";
 import { absoluteUrl } from "@/lib/seo";
 
-export const dynamic = "force-dynamic";
+// ISR: ana sayfa 5 dakikada bir yenilenir; aradaki istekler önbellekten sunulur.
+// Böylece Vercel serverless'ta her istekte fonksiyon+DB çağrısı yapılmaz ve ani
+// yük patlamalarındaki (24+ eşzamanlı istek) aralıklı 500'ler giderilir.
+export const revalidate = 300;
 
 interface ProductsResponse {
   items: (ProductCardProduct & PublicProduct & { category: { slug: string; title: string }; createdAt?: string })[];
