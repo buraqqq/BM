@@ -15,3 +15,7 @@ public/uploads/
 .DS_Store
 coverage/
 tsconfig.tsbuildinfo
+
+.vercel
+.env*
+!.env.example
