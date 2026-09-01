@@ -172,8 +172,15 @@ export function GardenPuzzleEditor({
         Numaralı bölgeleri (Zone A/B/C/D) sürükleyerek veya oklarla yeniden sırala; alanını slider ile ayarla. Tek bir bölgeyi beğenmediysen aşağıdan yalnızca o bölgeyi revize et.
       </p>
 
-      {/* Canlı önizleme */}
-      <div style={{ margin: "14px 0", borderRadius: 12, overflow: "hidden", border: "1px solid var(--gray-200)" }} dangerouslySetInnerHTML={{ __html: visual }} />
+      {/* Canlı önizleme — SVG'yi ham HTML olarak DOM'a enjekte etmek yerine (dangerouslySetInnerHTML,
+          docs/security.md'deki "kod tabanında 0 dangerouslySetInnerHTML" ilkesine aykırıydı) <img>
+          src'ine gömülü bir data URI olarak veriyoruz. Tarayıcı bunu bir görüntü olarak parse eder —
+          DOM'a script çalıştırabilecek biçimde asla enjekte edilmez (savunma derinliği: zone.title/
+          description ileride bu SVG'ye eklenirse, ya da LLM çıktısı manipüle edilirse bile XSS yüzeyi
+          açılmaz). */}
+      <div style={{ margin: "14px 0", borderRadius: 12, overflow: "hidden", border: "1px solid var(--gray-200)" }}>
+        <img src={svgToDataUri(visual)} alt="Bahçe yerleşim önizlemesi" style={{ display: "block", width: "100%", height: "auto" }} />
+      </div>
 
       {/* Puzzle blokları (numaralı) */}
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -232,6 +239,11 @@ export function GardenPuzzleEditor({
       {msg && <p className="account-sub" style={{ marginTop: 8 }}>{msg}</p>}
     </div>
   );
+}
+
+/** SVG string → görüntü olarak güvenli biçimde gömülebilecek data URI (XSS'e kapalı; bkz. yukarıdaki yorum). */
+function svgToDataUri(svg: string): string {
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }
 
 /** SVG string → canvas → PNG data URL. Boyut 2x (netlik için). */

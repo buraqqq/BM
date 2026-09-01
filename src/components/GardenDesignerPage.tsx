@@ -67,6 +67,16 @@ export function GardenDesignerPage() {
     textCommand: "",
   });
   const [result, setResult] = useState<DesignResponse | null>(null);
+  // Bölüm (bug fix) — GardenPuzzleEditor kendi "layout" state'ini yalnızca ilk
+  // mount'ta zones prop'undan türetir (useState initializer). Kullanıcı formu
+  // değiştirip "Tasarımı Oluştur"a TEKRAR bastığında (yeni bir result), aynı
+  // GardenPuzzleEditor instance'ı (key'siz) React tarafından remount EDİLMEZ —
+  // editör eski tasarımın bölge/yüzde durumunu göstermeye devam ederdi. Yeni bir
+  // TASARIM (submit()) üretildiğinde bu sayaç artırılır ve <GardenPuzzleEditor
+  // key={resultVersion}> ile bilinçli bir remount tetiklenir. "Maliyeti
+  // Güncelle"/"Nokta Revize" AYNI tasarımı düzenlediği için (onRecalculated)
+  // sayaç artmaz — editörün kendi state'i haklı olarak korunur.
+  const [resultVersion, setResultVersion] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cartMsg, setCartMsg] = useState<string | null>(null);
@@ -147,6 +157,7 @@ export function GardenDesignerPage() {
         return;
       }
       setResult(data);
+      setResultVersion((v) => v + 1);
     } catch {
       setError("Sunucuya ulaşılamadı.");
     } finally {
@@ -293,8 +304,12 @@ export function GardenDesignerPage() {
             <span className="account-sub" style={{ margin: 0 }}>Alan: {formatTL(result.result.areaSqm)} m² · {result.source === "llm" ? "Yapay Zekâ" : "Kural Tabanlı"}</span>
           </div>
 
-          {/* Mock görsel yerleşim (Visual AI fallback) */}
+          {/* Mock görsel yerleşim (Visual AI fallback). key={resultVersion}: yeni bir
+              tasarım üretildiğinde (submit()) editörü bilinçli remount eder, bkz. yukarıdaki
+              resultVersion yorumu — "Maliyeti Güncelle"/"Nokta Revize" ise aynı instance'ı
+              (aynı key) korur, çünkü onlar mevcut tasarımı düzenler, yenisini üretmez. */}
           <GardenPuzzleEditor
+            key={resultVersion}
             zones={result.result.zones}
             input={result.input}
             onRecalculated={(data) => setResult((prev) => (prev ? { ...prev, source: "rule-based", result: data.result, visual: data.visual } : prev))}
@@ -317,8 +332,15 @@ export function GardenDesignerPage() {
               </div>
               <div style={{ textAlign: "right" }}>
                 {item.price !== null && <div className="cart-line-price">{formatTL(item.price)} ₺</div>}
-                {item.isAffiliate ? (
+                {/* Bug fix — matchBomToCatalog() ne iç katalogda ne de affiliate katalogda eşleşme
+                    bulamadığında isAffiliate:true + affiliateUrl:null döndürüyordu; bu buton href'siz
+                    (tıklanınca hiçbir şey olmayan) "ölü" bir link olarak render ediliyordu. Kullanıcıya
+                    yanlışlıkla satın alınabilir gibi gösterilmez; bu kalem için henüz bir ürün linki
+                    olmadığı açıkça belirtilir. */}
+                {item.isAffiliate && item.affiliateUrl ? (
                   <a className="btn btn-primary" style={{ padding: "4px 10px", fontSize: "0.75rem", marginTop: 4 }} href={item.affiliateUrl} target="_blank" rel="noreferrer">Satın Al (Partner) <i className="fas fa-external-link-alt" /></a>
+                ) : item.isAffiliate ? (
+                  <span className="account-sub" style={{ margin: 0, fontSize: "0.75rem" }}>Bu ürün için henüz bir satış linki yok.</span>
                 ) : (
                   <a className="btn btn-primary" style={{ padding: "4px 10px", fontSize: "0.75rem", marginTop: 4 }} href={`/urun/${item.slug}`}>İncele</a>
                 )}

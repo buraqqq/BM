@@ -7,7 +7,29 @@
 | Admin şifresi kaynak kodda açık metin (`admin.html`, `"mam2026"`) | ✅ **Kapatıldı.** Şifre hiçbir dosyada yazılı değil; yalnızca ilk kurulumda `.env`'den okunup bcrypt (cost 12) ile hash'lenerek DB'ye yazılır (`prisma/seed-admin.ts`). `.env` `.gitignore`'da. |
 | Kimlik doğrulama yalnızca `localStorage.bam_auth` bayrağı | ✅ **Kapatıldı.** NextAuth JWT session, httpOnly cookie, sunucu tarafında her istekte doğrulanır. Konsoldan `localStorage` değiştirmek artık hiçbir işe yaramaz — çünkü kontrol tarayıcıda değil sunucuda. |
 | Admin paneli linki herkese açık nav'da | ⚠️ **Kısmen.** `/admin` linki hâlâ mevcut nav'da tutulmadı (public sitenin `SiteHeader.tsx`'inde `/admin` linki var, ama artık arkasında gerçek auth olduğu için tıklamak hiçbir şeyi ifşa etmiyor — yalnızca login ekranına düşer). Dileyen bunu kaldırabilir; risk seviyesi CRITICAL'den bilgi-ifşası-olmayan bir UX tercihine düştü. |
-| Mimari stored-XSS riski (`innerHTML` ile escape'siz render) | ✅ **Yapısal olarak kapatıldı.** Yeni kod tabanında `grep -rn "dangerouslySetInnerHTML\|innerHTML" src/` **sıfır sonuç** döner — React'in varsayılan JSX render'ı tüm metni otomatik escape eder. Test: bkz. aşağıdaki "Test sonuçları". |
+| Mimari stored-XSS riski (`innerHTML` ile escape'siz render) | ✅ **Yapısal olarak kapatıldı** (bkz. güncelleme notu aşağıda) — React'in varsayılan JSX render'ı tüm metni otomatik escape eder. Test: bkz. aşağıdaki "Test sonuçları". |
+
+> **Güncelleme notu (adversarial inceleme, 2026-09):** Bu tablonun `dangerouslySetInnerHTML`
+> satırındaki "sıfır sonuç" iddiası FAZ 1 anlık görüntüsü içindi ve o zamanki `src/`
+> için doğruydu, ancak sonraki fazlarda eklenen dosyalarla birlikte GÜNCELLENMEDEN
+> kaldı — bu nedenle şu an itibarıyla yanıltıcıydı. Gerçek durum:
+> - `src/components/JsonLd.tsx` (FAZ 3) — schema.org JSON-LD için **kaçınılmaz**,
+>   bilinçli tek kullanım; veri `src/lib/json-ld-escape.ts` (`safeJsonLdString`,
+>   birim testli) ile `</script>` kaçışına karşı escape edilir. Bu, prensibi ihlal
+>   etmez — ilke "kullanıcı verisi asla escape'siz DOM'a yazılmaz", `JsonLd.tsx` bunu
+>   sağlar.
+> - `src/components/GardenPuzzleEditor.tsx` (FAZ 12) — puzzle önizleme SVG'sini
+>   `dangerouslySetInnerHTML` ile enjekte ediyordu. İçerik o an için saldırıya açık
+>   DEĞİLDİ (SVG yalnızca sabit `ZONE_LABELS` metni + doğrulanmış enum'lardan türeyen
+>   sayısal koordinatlar içeriyordu, kullanıcı/LLM serbest metni asla bu SVG'ye
+>   akmıyordu) ama satır, dosyanın kendisinde bunu belirten hiçbir yorum/test
+>   olmadan bu ilkeyi ihlal ediyordu — ileride biri `zone.title` (LLM çıktısı,
+>   yalnızca `min(1)` ile sınırlı, escape edilmemiş) bu SVG'ye eklerse sessizce
+>   gerçek bir stored-XSS'e dönüşebilirdi. **Düzeltildi**: önizleme artık SVG'yi
+>   `<img src="data:image/svg+xml;utf8,...">` biçiminde gömüyor — tarayıcı bunu
+>   yalnızca bir görüntü olarak parse eder, DOM'a asla script çalıştırabilecek
+>   biçimde yazılmaz. `grep -rn "dangerouslySetInnerHTML\|innerHTML" src/` artık
+>   yalnızca `JsonLd.tsx`'te (dokümante edilmiş, escape'li, testli) eşleşir.
 
 ## Yeni güvenlik katmanları
 
@@ -78,9 +100,29 @@ Yeni stok/fiyat/kampanya/import-export uçlarının audit log kapsamı: `PRODUCT
 
 ## Yapılmadı / FAZ 2+ önerisi
 
-- CSP (Content-Security-Policy) header'ı henüz eklenmedi (yalnızca X-Frame-Options vb. eklendi) — Font Awesome/Google Fonts gibi harici kaynaklar kullanıldığı için dikkatli bir CSP politikası gerektirir, ayrı bir iterasyon önerilir.
+- **CSP durumu (düzeltme, 2026-09):** Bu belge önceden "CSP header'ı henüz eklenmedi"
+  diyordu — bu artık YANLIŞ: `next.config.js` bir `Content-Security-Policy` başlığı
+  içeriyor. Ancak mevcut politika `script-src 'self' 'unsafe-inline' 'unsafe-eval'`
+  kullanıyor — `'unsafe-inline'` ve özellikle `'unsafe-eval'`, CSP'nin script-injection
+  XSS'e karşı sağladığı korumanın büyük kısmını etkisiz kılar (bir saldırgan DOM'a
+  inline script enjekte edebilirse CSP bunu engellemez). Kalan header'lar
+  (`X-Frame-Options`, `nosniff`, `Referrer-Policy`, `Permissions-Policy`, `HSTS`) aktif
+  ve etkili. **Öneri (henüz uygulanmadı, build/deploy ile doğrulama gerektirir):**
+  inline `<script>`/`style` kullanımını nonce veya hash tabanlı CSP'ye taşıyıp
+  `'unsafe-inline'`'ı kaldırmak, `'unsafe-eval'`'i yalnızca gerçekten gerekiyorsa
+  (bazı üçüncü parti kütüphaneler) tutmak. Bu değişiklik canlı bir `next build` ile
+  doğrulanmadan yapılmamalı — yanlış daraltma sayfaları kırabilir.
 - 2FA / tek kullanımlık kod desteği yok.
 - Dosya yükleme antivirüs/malware taraması yok (yalnızca MIME + boyut kontrolü var).
+- `getClientIp()` (`src/lib/audit.ts`) `X-Forwarded-For` başlığını doğrudan güvenilir
+  kabul ediyor; uygulama güvenilir bir reverse proxy'nin ARKASINDA değilse (proxy bu
+  başlığı istemcinin gönderdiği değerle DEĞİL kendi çözdüğü IP ile üzerine yazmıyorsa)
+  bir saldırgan rastgele `X-Forwarded-For` değerleri göndererek hem login brute-force
+  rate limitini (Bölüm "Brute-force koruması") hem de `/api/ai-designer/design`
+  maliyet-DoS rate limitini IP başına sıfırlayabilir. Vercel/Netlify gibi platformlar
+  bu başlığı kendi edge'lerinde günceller (mitigasyon sağlar); doğrudan bir VPS'e,
+  proxy'siz deploy edilirse risk gerçek hale gelir. Deploy öncesi kontrol listesine
+  eklenmesi önerilir (bkz. `DEPLOYMENT.md` Bölüm 7).
 
 ---
 

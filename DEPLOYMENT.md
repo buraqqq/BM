@@ -169,10 +169,18 @@ Kurulum (önerilen: Netlify Scheduled Function):
       `Permissions-Policy` — `next.config.js`).
 - [ ] E-posta: `EMAIL_FROM` doğrulanmış gönderici adresi.
 - [ ] Migration'lar `prisma migrate deploy` ile uygulandı (elle SQL yok).
+- [ ] Uygulama güvenilir bir reverse proxy/CDN (Vercel, Netlify, veya `X-Forwarded-For`'u
+      kendi çözdüğü değerle üzerine yazan bir yapılandırma) ARKASINDA çalışıyor — aksi
+      halde login ve AI-designer rate limitleri sahte `X-Forwarded-For` ile atlatılabilir
+      (bkz. `docs/security.md`).
 
-**Bilinen sınır (CSP):** Content-Security-Policy başlığı henüz eklenmedi —
-Font Awesome / Google Fonts harici kaynakları nedeniyle dikkatli bir politika
-gerekir; ayrı bir iterasyon olarak önerilir (bkz. `docs/security.md`).
+**CSP durumu (düzeltme, 2026-09):** `next.config.js` bir Content-Security-Policy
+başlığı İÇERİYOR (önceki "henüz eklenmedi" notu güncel değildi) ama
+`script-src 'self' 'unsafe-inline' 'unsafe-eval'` kullanıyor — bu iki direktif CSP'nin
+XSS korumasının çoğunu etkisiz kılıyor. Sıkılaştırma (nonce/hash tabanlı script-src)
+ayrı bir iterasyon olarak önerilir; bkz. `docs/security.md` "Yapılmadı" bölümü. Bu tek
+başına bir "eklenmedi" eksikliği değil, mevcut CSP'nin zayıf yapılandırılmış olması —
+deploy'u engellemez ama öncelikli bir sertleştirme kalemidir.
 
 ---
 
