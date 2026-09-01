@@ -170,6 +170,8 @@ export function GardenPuzzleEditor({
       <h3 style={{ margin: 0 }}>Puzzle Düzenleme — Tasarımını Düzenle</h3>
       <p className="account-sub" style={{ marginTop: 4 }}>
         Numaralı bölgeleri (Zone A/B/C/D) sürükleyerek veya oklarla yeniden sırala; alanını slider ile ayarla. Tek bir bölgeyi beğenmediysen aşağıdan yalnızca o bölgeyi revize et.
+        {" "}
+        <strong>Mobilde:</strong> sürükleme dokunmatik ekranlarda çalışmaz — bölgeleri sıralamak için her satırın solundaki ▲▼ oklarını kullanın.
       </p>
 
       {/* Canlı önizleme — SVG'yi ham HTML olarak DOM'a enjekte etmek yerine (dangerouslySetInnerHTML,
@@ -216,12 +218,16 @@ export function GardenPuzzleEditor({
       <div className="account-card" style={{ marginTop: 14, padding: 14 }}>
         <div className="label" style={{ marginBottom: 6 }}>Nokta Revize — Tek Bir Bölgeyi Değiştir</div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-          <select value={reviseZone} onChange={(e) => setReviseZone(e.target.value as ZoneId)} style={{ maxWidth: 140 }}>
+          <select value={reviseZone} onChange={(e) => setReviseZone(e.target.value as ZoneId)} style={{ maxWidth: 140, fontSize: 16 }}>
             {ZONE_IDS.map((id) => (
               <option key={id} value={id}>{ZONE_NUMBER_LABELS[id]} — {ZONE_SHORT_LABELS[id]}</option>
             ))}
           </select>
-          <input value={reviseInstruction} onChange={(e) => setReviseInstruction(e.target.value)} placeholder={"Ör. \"Zone C'yi büyüt\" veya \"sulamayı azalt\""} style={{ flex: 1, minWidth: 200 }} />
+          {/* fontSize: 16 — bu alan .account-form dışında olduğu için globals.css'teki
+              genel mobil font-size düzeltmesi buraya uygulanmıyor; iOS Safari'nin
+              16px altı input'larda tetiklediği otomatik zoom'u burada da önlemek için
+              açıkça belirtildi (bkz. globals.css "Mobil optimizasyon düzeltmeleri"). */}
+          <input value={reviseInstruction} onChange={(e) => setReviseInstruction(e.target.value)} placeholder={"Ör. \"Zone C'yi büyüt\" veya \"sulamayı azalt\""} style={{ flex: 1, minWidth: 200, fontSize: 16 }} />
           <button type="button" className="btn btn-primary" onClick={reviseTargetZone} disabled={revising} style={{ justifyContent: "center" }}>
             <i className="fas fa-magic" /> {revising ? "Revize Ediliyor…" : "Bölgeyi Revize Et"}
           </button>

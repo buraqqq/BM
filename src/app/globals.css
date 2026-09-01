@@ -491,3 +491,45 @@ a { text-decoration: none; color: inherit; }
   .ai-garden-card { flex-direction: column; text-align: center; align-items: center; }
   .ai-garden-desc { margin-left: auto; margin-right: auto; }
 }
+
+/* ==========================================================
+   Mobil optimizasyon düzeltmeleri (2026-09)
+   1) iOS Safari, font-size'ı 16px'in ALTINDA olan bir input/select'e
+      dokunulduğunda sayfayı otomatik olarak yakınlaştırır (zoom-in) —
+      "mobilde bozuk görünüyor" şikayetlerinin en klasik nedenlerinden
+      biridir, çünkü kullanıcı her form alanına dokunduğunda sayfa
+      aniden büyür ve elle geri küçültmesi gerekir. Aşağıdaki seçiciler
+      masaüstünde HİÇBİR ŞEKİLDE değişmiyor — kural yalnızca ≤768px'te
+      devreye giriyor ve tek yaptığı yazı tipini 16px'e çıkarmak.
+   2) .account-card/.account-shell/.cart-shell/.checkout-shell'in
+      masaüstü için tasarlanmış yan boşlukları (20–28px), küçük
+      telefonlarda (≤480px, ör. iPhone SE 375px) kullanılabilir
+      genişliğin önemli bir kısmını gereksiz yere yiyordu — özellikle
+      "kendi bahçeni yarat" aracındaki puzzle satırlarında (rozet +
+      oklar + slider aynı satırda) bu daralma, öğelerin gereksiz yere
+      alt alta kırılmasına neden oluyordu. Yan boşluklar daraltıldı;
+      üst/alt boşluklara (sabit header/alt sekme çubuğu payı için)
+      dokunulmadı.
+   3) Sepette adet +/- butonları (30×30px) önerilen 44px dokunma
+      hedefinin belirgin şekilde altındaydı — mobilde büyütüldü.
+   ========================================================== */
+@media (max-width: 768px) {
+  .account-form input,
+  .account-form select,
+  .account-form textarea,
+  .filter-field select,
+  .filter-field input,
+  .search-bar input[type="search"],
+  .form-row input,
+  .form-row select,
+  .form-row textarea {
+    font-size: 16px;
+  }
+}
+@media (max-width: 480px) {
+  .account-shell { padding-left: 14px; padding-right: 14px; }
+  .account-card { padding: 22px 16px; }
+  .cart-shell { padding-left: 14px; padding-right: 14px; }
+  .checkout-shell { padding-left: 14px; padding-right: 14px; }
+  .cart-qty button { width: 40px; height: 40px; }
+}
