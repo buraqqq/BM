@@ -174,13 +174,20 @@ Kurulum (önerilen: Netlify Scheduled Function):
       halde login ve AI-designer rate limitleri sahte `X-Forwarded-For` ile atlatılabilir
       (bkz. `docs/security.md`).
 
-**CSP durumu (düzeltme, 2026-09):** `next.config.js` bir Content-Security-Policy
-başlığı İÇERİYOR (önceki "henüz eklenmedi" notu güncel değildi) ama
-`script-src 'self' 'unsafe-inline' 'unsafe-eval'` kullanıyor — bu iki direktif CSP'nin
-XSS korumasının çoğunu etkisiz kılıyor. Sıkılaştırma (nonce/hash tabanlı script-src)
-ayrı bir iterasyon olarak önerilir; bkz. `docs/security.md` "Yapılmadı" bölümü. Bu tek
-başına bir "eklenmedi" eksikliği değil, mevcut CSP'nin zayıf yapılandırılmış olması —
-deploy'u engellemez ama öncelikli bir sertleştirme kalemidir.
+**CSP durumu (düzeltme, 2026-09 — ikinci tur):** CSP artık `next.config.js`'te DEĞİL,
+`src/middleware.ts`'te — her istek için rastgele bir nonce üretilip `script-src`'e
+enjekte ediliyor (`'unsafe-inline'` script-src'ten kaldırıldı, prod'da
+`'strict-dynamic'` kullanılıyor). Bu, önceki "zayıf CSP" bulgusunun düzeltmesidir
+(bkz. `docs/security.md`). **Bu, `middleware.ts`'e dokunan bir değişikliktir — deploy
+öncesi MUTLAKA yerelde doğrulanmalıdır** (aşağıdaki kontrol listesindeki ilgili
+maddeye bakın).
+
+- [ ] **(YENİ, 2026-09) `middleware.ts`/CSP-nonce değişikliği doğrulandı:**
+      `npm run dev` ve ayrıca `npm run build && npm run start` ile: ana sayfa konsolda
+      CSP hatası vermeden açılıyor; `/admin/login` erişilebiliyor ve doğru şifreyle
+      giriş çalışıyor; girişsiz bir `/admin/...` sayfası `/admin/login`'e
+      yönlendiriyor; "kendi bahçeni yarat" aracı çalışıyor; `/sw.js` service worker
+      kaydı hâlâ oluşuyor (PWA "Uygulamayı Yükle" butonu görünüyor).
 
 ---
 

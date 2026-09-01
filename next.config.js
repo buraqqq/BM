@@ -30,7 +30,15 @@ const nextConfig = {
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
           { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
           { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' },
-          { key: 'Content-Security-Policy', value: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com data:; img-src 'self' data: blob: https:; connect-src 'self' https:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" },
+          // Güncelleme (adversarial inceleme, 2026-09): Content-Security-Policy
+          // buradan kaldırıldı. Nedeni: statik bir CSP header'ı script-src'te
+          // 'unsafe-inline'/'unsafe-eval' KULLANMAK ZORUNDA kalıyordu (aksi halde
+          // Next.js'in kendi ürettiği inline script'ler bile bloklanırdı) — bu da
+          // CSP'nin asıl amacı olan "sayfaya enjekte edilen script'leri engelleme"
+          // korumasını neredeyse tamamen etkisiz kılıyordu. Artık CSP,
+          // src/middleware.ts içinde HER İSTEK için üretilen rastgele bir nonce
+          // ile uygulanıyor ('nonce-...' + 'strict-dynamic', unsafe-inline YOK).
+          // Tek CSP kaynağı middleware.ts'tir — burada tekrar eklenmemeli.
         ],
       },
     ];

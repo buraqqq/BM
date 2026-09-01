@@ -6,7 +6,7 @@
 |---|---|
 | Admin şifresi kaynak kodda açık metin (`admin.html`, `"mam2026"`) | ✅ **Kapatıldı.** Şifre hiçbir dosyada yazılı değil; yalnızca ilk kurulumda `.env`'den okunup bcrypt (cost 12) ile hash'lenerek DB'ye yazılır (`prisma/seed-admin.ts`). `.env` `.gitignore`'da. |
 | Kimlik doğrulama yalnızca `localStorage.bam_auth` bayrağı | ✅ **Kapatıldı.** NextAuth JWT session, httpOnly cookie, sunucu tarafında her istekte doğrulanır. Konsoldan `localStorage` değiştirmek artık hiçbir işe yaramaz — çünkü kontrol tarayıcıda değil sunucuda. |
-| Admin paneli linki herkese açık nav'da | ⚠️ **Kısmen.** `/admin` linki hâlâ mevcut nav'da tutulmadı (public sitenin `SiteHeader.tsx`'inde `/admin` linki var, ama artık arkasında gerçek auth olduğu için tıklamak hiçbir şeyi ifşa etmiyor — yalnızca login ekranına düşer). Dileyen bunu kaldırabilir; risk seviyesi CRITICAL'den bilgi-ifşası-olmayan bir UX tercihine düştü. |
+| Admin paneli linki herkese açık nav'da | ✅ **Kapatıldı** (2026-09 güncellemesi). Bu satır az önce yalnızca Next.js uygulamasındaki (`SiteHeader.tsx`) nav'ı kapsıyordu — ama proje kökünde, Next.js uygulamasının DIŞINDA, ayrı bir statik prototip (`I:\BM-website\admin.html` + `index.html` + `script.js`) da vardı. Bu prototip CRITICAL bir açıktı (bkz. Bölüm 6.1, adversarial denetim raporu): sabit kodlanmış `PASSWORD = "mam2026"`, `localStorage` tabanlı sahte auth, ve tüm ürün/fiyat verisini tarayıcıda düzenleyip dışa aktarabilen tam işlevsel bir panel — kimlik doğrulaması olmadan herkes DevTools'tan şifreyi okuyup paneli kullanabiliyordu. Düzeltildi: `admin.html` artık düzenleme/giriş yeteneği olmayan, salt bilgilendirici bir "taşındı" sayfası; `index.html`'deki "Yönetim" nav linki kaldırıldı. |
 | Mimari stored-XSS riski (`innerHTML` ile escape'siz render) | ✅ **Yapısal olarak kapatıldı** (bkz. güncelleme notu aşağıda) — React'in varsayılan JSX render'ı tüm metni otomatik escape eder. Test: bkz. aşağıdaki "Test sonuçları". |
 
 > **Güncelleme notu (adversarial inceleme, 2026-09):** Bu tablonun `dangerouslySetInnerHTML`
@@ -100,29 +100,38 @@ Yeni stok/fiyat/kampanya/import-export uçlarının audit log kapsamı: `PRODUCT
 
 ## Yapılmadı / FAZ 2+ önerisi
 
-- **CSP durumu (düzeltme, 2026-09):** Bu belge önceden "CSP header'ı henüz eklenmedi"
-  diyordu — bu artık YANLIŞ: `next.config.js` bir `Content-Security-Policy` başlığı
-  içeriyor. Ancak mevcut politika `script-src 'self' 'unsafe-inline' 'unsafe-eval'`
-  kullanıyor — `'unsafe-inline'` ve özellikle `'unsafe-eval'`, CSP'nin script-injection
-  XSS'e karşı sağladığı korumanın büyük kısmını etkisiz kılar (bir saldırgan DOM'a
-  inline script enjekte edebilirse CSP bunu engellemez). Kalan header'lar
-  (`X-Frame-Options`, `nosniff`, `Referrer-Policy`, `Permissions-Policy`, `HSTS`) aktif
-  ve etkili. **Öneri (henüz uygulanmadı, build/deploy ile doğrulama gerektirir):**
-  inline `<script>`/`style` kullanımını nonce veya hash tabanlı CSP'ye taşıyıp
-  `'unsafe-inline'`'ı kaldırmak, `'unsafe-eval'`'i yalnızca gerçekten gerekiyorsa
-  (bazı üçüncü parti kütüphaneler) tutmak. Bu değişiklik canlı bir `next build` ile
-  doğrulanmadan yapılmamalı — yanlış daraltma sayfaları kırabilir.
+- **CSP durumu (düzeltme, 2026-09 — ikinci tur):** Önceki not, statik `next.config.js`
+  CSP'sinin `'unsafe-inline'`/`'unsafe-eval'` kullandığını ve bunun bir sertleştirme
+  önerisi olduğunu söylüyordu. **Artık uygulandı**: CSP, `next.config.js`'ten
+  kaldırılıp `src/middleware.ts`'e taşındı; her istek için `crypto.randomUUID()` ile
+  rastgele bir nonce üretiliyor ve `script-src`'e `'nonce-...'` + prod'da
+  `'strict-dynamic'` olarak enjekte ediliyor — `'unsafe-inline'` script-src'ten
+  tamamen kaldırıldı (dev ortamında Next.js Fast Refresh'in ihtiyaç duyduğu
+  `'unsafe-eval'` yalnızca `NODE_ENV !== "production"` iken tutuluyor). `style-src`
+  hâlâ `'unsafe-inline'` içeriyor (bileşenlerdeki `style={{...}}` inline stilleri
+  nonce'suz braket içine almak daha büyük bir refactor gerektirir — kabul edilmiş,
+  düşük öncelikli kalan risk; CSS injection XSS'e göre çok daha düşük etkilidir).
+  **ÖNEMLİ — deploy öncesi doğrulama zorunlu:** Bu değişiklik `middleware.ts`'in
+  eşleştiği (`matcher`) rota kapsamını genişletti ve admin route koruma mantığını
+  `withAuth()`'tan `next-auth/jwt`'nin `getToken()`'ına taşıdı. Canlıya almadan önce
+  yerelde `npm run dev` VE `npm run build && npm run start` ile: (1) ana sayfanın
+  konsolda CSP hatası olmadan yüklendiği, (2) `/admin/login`'in erişilebilir olduğu,
+  (3) doğru admin şifresiyle girişin çalıştığı, (4) girişsiz `/admin/urunler` gibi bir
+  admin sayfasının `/admin/login`'e yönlendirdiği, (5) bahçe tasarım aracının
+  (kendi bahçeni yarat) çalıştığı, (6) service worker'ın (`/sw.js`) hâlâ kayıt
+  olduğu doğrulanmalıdır.
+- **`getClientIp()` (düzeltme, 2026-09 — ikinci tur):** `src/lib/audit.ts` artık
+  `X-Forwarded-For`'u doğrudan güvenmiyor. Öncelik sırası: platformun kendi eklediği,
+  istemcinin üzerine yazamayacağı header (`x-vercel-forwarded-for` / Vercel,
+  `x-nf-client-connection-ip` / Netlify) → `x-real-ip` → `x-forwarded-for` zincirinin
+  SON hop'u (ilk hop yerine — ilk hop istemcinin kendisi tarafından yazılabilir).
+  **Not:** Bu yalnızca uygulama güvenilir bir reverse-proxy/CDN arkasında
+  çalıştırıldığında tam korumalıdır; proxy'siz, doğrudan internete açık bir deploy'da
+  hiçbir HTTP header'ı gerçek istemci IP'si için güvenilmez — bu durum bir kod
+  değişikliğiyle çözülemez, altyapı/deploy topolojisi meselesidir (bkz.
+  `DEPLOYMENT.md` Bölüm 7 kontrol listesi).
 - 2FA / tek kullanımlık kod desteği yok.
 - Dosya yükleme antivirüs/malware taraması yok (yalnızca MIME + boyut kontrolü var).
-- `getClientIp()` (`src/lib/audit.ts`) `X-Forwarded-For` başlığını doğrudan güvenilir
-  kabul ediyor; uygulama güvenilir bir reverse proxy'nin ARKASINDA değilse (proxy bu
-  başlığı istemcinin gönderdiği değerle DEĞİL kendi çözdüğü IP ile üzerine yazmıyorsa)
-  bir saldırgan rastgele `X-Forwarded-For` değerleri göndererek hem login brute-force
-  rate limitini (Bölüm "Brute-force koruması") hem de `/api/ai-designer/design`
-  maliyet-DoS rate limitini IP başına sıfırlayabilir. Vercel/Netlify gibi platformlar
-  bu başlığı kendi edge'lerinde günceller (mitigasyon sağlar); doğrudan bir VPS'e,
-  proxy'siz deploy edilirse risk gerçek hale gelir. Deploy öncesi kontrol listesine
-  eklenmesi önerilir (bkz. `DEPLOYMENT.md` Bölüm 7).
 
 ---
 
